@@ -1,11 +1,11 @@
 <!doctype html>
-<html lang="zh-CN" data-release="1.3.2" data-account-user="admin" data-account-verifier="CRwoBdTBifYqJkB6Mzo1crIr94TNeRl0wfpgtvwVOJTdSdIhLb2aaKW2KslScwc2ENz1Og_h" data-default-coach="ih0PWQoXv2tppM0ph_ejmMf3nNvmbOacqN0QYmkCx8uE1mA-Dtyt2ACZ1CbiaoNrq0hS1A6tR8JENwKnjfyX"><head>
+<html lang="zh-CN" data-release="1.3.3" data-account-user="admin" data-account-verifier="CRwoBdTBifYqJkB6Mzo1crIr94TNeRl0wfpgtvwVOJTdSdIhLb2aaKW2KslScwc2ENz1Og_h" data-default-coach="ih0PWQoXv2tppM0ph_ejmMf3nNvmbOacqN0QYmkCx8uE1mA-Dtyt2ACZ1CbiaoNrq0hS1A6tR8JENwKnjfyX"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#102a45"><meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="动作研习室"><title>动作研习室 · 随身练习</title>
 <link rel="apple-touch-icon" href="./icon-180.png"><link rel="icon" href="./icon-192.png">
 <link rel="manifest" href="./manifest.webmanifest"><link rel="stylesheet" href="./style.css"><link rel="stylesheet" href="./coach.css"><link rel="stylesheet" href="./training.css">
-</head><body><header class="app-header"><div class="app-bar"><div class="brand"><img src="./icon-180.png" width="32" height="32" alt=""><strong>动作研习室</strong></div><div class="header-actions"><button id="ai-settings" class="quiet" aria-haspopup="dialog" hidden>设置</button><button id="install" class="quiet">安装</button><a id="android-apk" class="apk-link" href="./motioncoach-android.apk" download="动作研习室-Android.apk" hidden>安卓安装</a></div></div></header>
+</head><body><header class="app-header"><div class="app-bar"><div class="brand"><img src="./icon-180.png" width="32" height="32" alt=""><strong>动作研习室</strong></div><div class="header-actions"><button id="ai-settings" class="quiet" aria-haspopup="dialog" hidden>个人中心</button><button id="install" class="quiet">安装</button><a id="android-apk" class="apk-link" href="./motioncoach-android.apk" download="动作研习室-Android.apk" hidden>安卓安装</a></div></div></header>
 <section id="account-gate" class="account-gate" aria-labelledby="login-title" hidden>
   <form id="login-form">
     <h1 id="login-title">登录</h1>
@@ -30,12 +30,44 @@
 </section>
 </main>
 <dialog id="settings-dialog" class="settings-dialog" aria-labelledby="settings-title">
-  <div class="section-head"><h2 id="settings-title">设置中心</h2><button type="button" id="close-settings">关闭</button></div>
-  <section class="settings-list" aria-label="应用设置">
-    <div data-requires-account hidden><span><strong>登录账号</strong><small id="account-name"></small></span><button type="button" id="logout">退出登录</button></div>
-    <div data-requires-account hidden><span><strong>AI 服务</strong><small id="settings-ai-label"></small></span><button type="button" id="open-service-settings">AI 接口设置</button></div>
-    <div><span><strong>软件版本</strong><small id="settings-version"></small></span><button type="button" id="settings-update">检查更新</button></div>
-  </section>
+  <div class="section-head"><h2 id="settings-title" tabindex="-1">个人中心</h2><button type="button" id="close-settings">关闭</button></div>
+  <div id="profile-home">
+    <section id="profile-summary" class="profile-summary" aria-label="个人资料" data-requires-account hidden>
+      <div class="profile-identity">
+        <div class="profile-photo" aria-hidden="true"><span>我</span><img id="profile-avatar" alt="" hidden></div>
+        <strong id="profile-name" class="profile-heading"></strong>
+        <button type="button" id="edit-profile">编辑资料</button>
+      </div>
+      <dl class="profile-metrics">
+        <div class="profile-sport"><dt>喜欢的项目</dt><dd id="profile-sport-summary"></dd></div>
+        <div><dt>身高</dt><dd id="profile-height-summary"></dd></div>
+        <div><dt>体重</dt><dd id="profile-weight-summary"></dd></div>
+      </dl>
+    </section>
+    <section class="settings-list" aria-label="应用设置">
+      <div data-requires-account hidden><span><strong>登录账号</strong><small id="account-name"></small></span><button type="button" id="logout">退出登录</button></div>
+      <div data-requires-account hidden><span><strong>AI 服务</strong><small id="settings-ai-label"></small></span><button type="button" id="open-service-settings">AI 接口设置</button></div>
+      <div><span><strong>软件版本</strong><small id="settings-version"></small></span><button type="button" id="settings-update">检查更新</button></div>
+    </section>
+  </div>
+  <form id="profile-form" class="profile-form" hidden>
+    <div class="profile-identity">
+      <div class="profile-photo" aria-hidden="true"><span>我</span><img id="profile-avatar-preview" alt="" hidden></div>
+      <div class="profile-photo-actions">
+        <input type="file" id="profile-avatar-file" accept="image/*" hidden>
+        <button type="button" id="choose-profile-avatar">选择头像</button>
+        <button type="button" id="remove-profile-avatar" class="quiet" hidden>移除</button>
+      </div>
+    </div>
+    <label>昵称<input id="profile-nickname" name="nickname" maxlength="24" autocomplete="nickname"></label>
+    <div class="profile-measurements">
+      <label>身高（cm）<input id="profile-height" name="height" type="number" inputmode="decimal" min="0.1" step="0.1"></label>
+      <label>体重（kg）<input id="profile-weight" name="weight" type="number" inputmode="decimal" min="0.1" step="0.1"></label>
+    </div>
+    <label>喜欢的体育项目<input id="profile-sport" name="sport" maxlength="80" placeholder="如舞蹈、啦啦操"></label>
+    <p id="profile-status" role="status"></p>
+    <div class="profile-form-actions"><button type="button" id="cancel-profile">取消</button><button id="save-profile" class="primary">保存资料</button></div>
+  </form>
 </dialog>
 <dialog id="install-dialog"><h2>安装到 iPhone</h2><ol><li>在 Safari 点「分享」→「添加到主屏幕」。</li><li>从桌面图标打开，等待显示「离线可用」。</li></ol><button id="close-install" class="primary">完成</button></dialog>
 <dialog id="update-dialog" aria-labelledby="update-title">

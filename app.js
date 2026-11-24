@@ -7,6 +7,7 @@ import {makePDF} from "./pdf.js";
 import {coachServiceLabel,mountCoach,openCoachSettings,provisionDefaultDeepSeek} from "./coach.js";
 import {mountTraining} from "./training.js";
 import {mountAccount} from "./account.js";
+import {mountProfile} from "./profile.js";
 
 const $=s=>document.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
@@ -28,9 +29,10 @@ function show(id,nav) {
 }
 // 退出后结束当前复盘和未完成操作，设备里的练习与模型设置继续保留。
 window.addEventListener("motioncoach-account",({detail})=>{
-  // 登录前也能从设置更新程序，账号和 AI 配置仅在登录后显示。
+  // 登录前也能检查更新，便于已有设备升级。个人资料和 AI 配置只在登录后显示。
   $("#ai-settings").hidden=false;
   for(const row of document.querySelectorAll("#settings-dialog [data-requires-account]"))row.hidden=!detail.unlocked;
+  profile.setAccount(detail.username);
   if(!detail.unlocked) {
     run?.abort();
     provisionDefaultDeepSeek(null);
@@ -264,8 +266,10 @@ $("#work").onclick=()=>show("form","work");$("#records").onclick=history;
 $("#standards-nav").onclick=standardsPage;$("#choose-standard").onclick=standardsPage;
 $("#training-nav").onclick=()=>{show("training","training-nav");training=mountTraining($("#training"),{openReview:open});};
 const settingsDialog=$("#settings-dialog");
+const profile=mountProfile(settingsDialog);
 mountAccount({onLogin:({coachKey})=>provisionDefaultDeepSeek(coachKey)});
 $("#ai-settings").onclick=()=>{
+  profile.showHome();
   $("#settings-ai-label").textContent=coachServiceLabel();
   settingsDialog.showModal();
 };
