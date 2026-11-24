@@ -16,6 +16,23 @@ function preceding(frames,time) {
   while(a+1<b){const m=(a+b)>>1;if(frames[m].time<=time)a=m;else b=m;}
   return a;
 }
+
+function nearest(frames,time) {
+  const i=preceding(frames,time), next=frames[i+1];
+  return next && next.time-time<time-frames[i].time ? i+1 : i;
+}
+
+function referenceClock(nodes,time) {
+  let left=0,right=nodes.length-1;
+  while(left+1<right) {
+    const mid=(left+right)>>1;
+    if(nodes[mid][0]<=time)left=mid;
+    else right=mid;
+  }
+  const [s0,r0]=nodes[left],[s1,r1]=nodes[right];
+  const fraction=Math.max(0,Math.min(1,(time-s0)/(s1-s0)));
+  return r0+(r1-r0)*fraction;
+}
 function drawSkeleton(c,frame,rect,colour,thickness,focus) {
   const {x,y,width,height}=rect;
   const points={};
@@ -72,7 +89,8 @@ export function replay(view,ref,stu,analysis,refURL,stuURL) {
   const [rv,sv]=view.querySelectorAll("video"),[rc,sc]=view.querySelectorAll(".surface canvas");
   const slider=view.querySelector("#timeline"), play=view.querySelector("#play"), stamp=view.querySelector("#stamp");
   const speed=view.querySelector("#speed"),clips=[ref,stu],videos=[rv,sv],canvases=[rc,sc];
-  let raf=0,closed=false,playing=false,desired=0, currentRef=0;
+  let raf=0,closed=false,playing=false,desired=0,desiredReference=0;
+  let playRequest=0, lastCatchUp=-Infinity;
   let markA=null,markB=null,loop=false,lastFrame=-1;
   let showSkeleton=true, focus=null;
   const overlay=view.querySelector("#overlay");
@@ -120,40 +138,104 @@ export function replay(view,ref,stu,analysis,refURL,stuURL) {
     }
     if(!info.angles.length){const cell=angleRows.insertRow().insertCell();cell.colSpan=4;cell.textContent="此时刻缺少可测关节。";}
   }
-  function update(time,seekStudent=false) {
-    desired=Math.min(stu.duration,Math.max(0,time));
-    if(seekStudent && sv.readyState>=1) sv.currentTime=desired;
-    const i=preceding(stu.frames,desired),next=Math.min(i+1,stu.frames.length-1);
-    const a=ref.frames[analysis.alignment[i]].time,b=ref.frames[analysis.alignment[next]].time;
-    const width=stu.frames[next].time-stu.frames[i].time;
-    const fraction=width ? Math.min(1,Math.max(0,(desired-stu.frames[i].time)/width)) : 0;
-    currentRef=a+(b-a)*fraction;
-    // 示范按单调动作路径插值连续回看；未测到骨架的画面仍显示原片。
-    if(rv.readyState>=1 && (!playing || !rv.seeking) && Math.abs(rv.currentTime-currentRef)>0.025) rv.currentTime=currentRef;
+  const referenceAt=time=>referenceClock(analysis.playback,time);
+  function display(time,referenceTime) {
+    desired=time;
+    desiredReference=referenceTime;
     redraw();
-    showAngles(i);
-    slider.value=desired;stamp.textContent="练习 "+desired.toFixed(2)+" 秒 · 示范 "+currentRef.toFixed(2)+" 秒";
+    showAngles(nearest(stu.frames,time));
+    slider.value=time;
+    stamp.textContent="练习 "+time.toFixed(2)+" 秒 · 示范 "+referenceTime.toFixed(2)+" 秒";
   }
-  function tick(){if(closed||!playing)return;if(loop && sv.currentTime>=markB)update(markA,true);else update(sv.currentTime);raf=requestAnimationFrame(tick);}
-  function pause(){playing=false;sv.pause();cancelAnimationFrame(raf);play.textContent="同步播放";}
-  function seek(t,label){pause();focus=focusJoints[label]||null;update(t,true);}
-  on(rv,"loadeddata",()=>update(desired));
-  on(sv,"loadeddata",()=>update(desired,Math.abs(sv.currentTime-desired)>.025));
-  for(const video of videos)on(video,"seeked",redraw);
-  on(sv,"ended",()=>{if(loop && playing){update(markA,true);sv.play().catch(pause);}else{pause();update(stu.duration);}});
-  on(play,"click",async()=>{
-    if(playing){pause();return;}
-    if(loop && (desired<markA || desired>=markB))seek(markA);
-    else if(desired>=stu.duration-0.05)seek(0);
+  function seekMedia(video,time) {
+    if(video.readyState>=1 && Math.abs(video.currentTime-time)>.008)video.currentTime=time;
+  }
+  function position(time,sample=false) {
+    const studentTime=Math.min(stu.duration,Math.max(0,time));
+    const referenceTime=sample ? ref.frames[analysis.alignment[nearest(stu.frames,studentTime)]].time : referenceAt(studentTime);
+    seekMedia(sv,studentTime);
+    seekMedia(rv,referenceTime);
+    display(studentTime,referenceTime);
+  }
+  function adjustReferenceRate(time) {
+    // 从一小段时间平均配速，吸收逐采样点的微小波动。偏离时先调整速度，让原视频持续播放。
+    const start=Math.max(0,time-.2),end=Math.min(stu.duration,time+.45);
+    const drift=referenceAt(time)-rv.currentTime;
+    const base=(referenceAt(end)-referenceAt(start))/(end-start)*sv.playbackRate;
+    const rate=Math.max(.125,Math.min(8,base+drift*1.8));
+    if(Math.abs(rv.playbackRate-rate)>.04)rv.playbackRate=rate;
+    return drift;
+  }
+  function tick(now) {
+    if(closed || !playing)return;
+    const time=Math.min(stu.duration,sv.currentTime);
+    if(loop && time>=markB) {
+      start(markA);
+      return;
+    }
+    const drift=adjustReferenceRate(time);
+    // 解码器偶发落后时低频向前校正。普通播放和低可见度片段沿连续时钟自然前进。
+    if(drift>.55 && !rv.seeking && !sv.seeking && now-lastCatchUp>950) {
+      seekMedia(rv,referenceAt(time));
+      lastCatchUp=now;
+    }
+    display(time,Math.min(ref.duration,rv.currentTime));
+    raf=requestAnimationFrame(tick);
+  }
+  function pause() {
+    playing=false;playRequest++;
+    sv.pause();rv.pause();cancelAnimationFrame(raf);
+    play.textContent="同步播放";
+  }
+  function seek(time,label,sample=Boolean(label)) {
+    pause();
+    focus=focusJoints[label] || null;
+    position(time,sample);
+  }
+  async function start(time) {
+    const request=++playRequest;
     focus=null;
-    try{sv.playbackRate=Number(speed.value);await sv.play();if(closed)return;playing=true;play.textContent="暂停";tick();}
-    catch{pause();stamp.textContent="此视频无法播放，请使用手机支持的原片格式。";}
+    position(time);
+    lastCatchUp=performance.now();
+    playing=true;play.textContent="暂停";
+    try {
+      sv.playbackRate=Number(speed.value);
+      adjustReferenceRate(time);
+      // 两个内联静音播放器必须在同一次点击中启动，避免移动端丢失播放授权。
+      await Promise.all([sv.play(),rv.play()]);
+      if(request===playRequest && !closed)raf=requestAnimationFrame(tick);
+    } catch {
+      if(request!==playRequest || closed)return;
+      pause();
+      stamp.textContent="此视频无法播放，请使用手机支持的原片格式。";
+    }
+  }
+  on(rv,"loadedmetadata",()=>seekMedia(rv,desiredReference));
+  on(sv,"loadedmetadata",()=>seekMedia(sv,desired));
+  for(const video of videos) {
+    on(video,"loadeddata",redraw);
+    on(video,"seeked",redraw);
+  }
+  on(sv,"ended",()=>{
+    if(!playing)return;
+    pause();
+    if(loop)start(markA);
+    else position(stu.duration);
+  });
+  on(play,"click",()=>{
+    if(playing) {
+      pause();
+      display(sv.currentTime,rv.currentTime);
+      return;
+    }
+    const outside=loop && (desired<markA || desired>=markB);
+    start(outside ? markA : desired>=stu.duration-.04 ? 0 : desired);
   });
   on(speed,"change",()=>{sv.playbackRate=Number(speed.value);});
   on(slider,"input",()=>seek(Number(slider.value)));
   for(const button of view.querySelectorAll("[data-step]")) on(button,"click",()=>{
-    let i=preceding(stu.frames,desired);i=Math.max(0,Math.min(stu.frames.length-1,i+Number(button.dataset.step)));
-    seek(stu.frames[i].time);
+    let i=nearest(stu.frames,desired);i=Math.max(0,Math.min(stu.frames.length-1,i+Number(button.dataset.step)));
+    seek(stu.frames[i].time,undefined,true);
   });
   on(layout,"click",()=>{pair.classList.toggle("stacked");nameLayout();});
   if(overlay)on(overlay,"click",()=>{
@@ -165,9 +247,9 @@ export function replay(view,ref,stu,analysis,refURL,stuURL) {
   on(view.querySelector("#mark-a"),"click",()=>{markA=desired;showMarks();});
   on(view.querySelector("#mark-b"),"click",()=>{markB=desired;showMarks();});
   on(loopButton,"click",()=>{loop=!loop;showMarks();if(loop)seek(markA);});
-  on(frameData,"toggle",()=>{if(frameData.open)showAngles(preceding(stu.frames,desired));});
+  on(frameData,"toggle",()=>{if(frameData.open)showAngles(nearest(stu.frames,desired));});
   showMarks();
-  update(0);
+  position(0);
   return {seek, snapshot(){
     const images=videos.map((v,i)=>{
       if(v.readyState<2 || v.seeking) return null;

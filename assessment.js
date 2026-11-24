@@ -1,8 +1,13 @@
 // 直接使用视频原画幅宽高比，避免竖屏视频的肘角在归一化坐标中被拉伸。
 const labels = ["躯干侧倾","左髋角","右髋角","左膝角","右膝角","左肘角","右肘角","左臂上举角","右臂上举角",
   "左上臂方向","右上臂方向","肩线倾斜"];
-const assessmentVersion = 2;
+export const ASSESSMENT_VERSION = 3;
 const noticeableDegrees = 12;
+const motionBones = [
+  ["r_shoulder","l_shoulder"],
+  ["l_shoulder","l_elbow"],["l_elbow","l_wrist"],["r_shoulder","r_elbow"],["r_elbow","r_wrist"],
+  ["l_hip","l_knee"],["l_knee","l_ankle"],["r_hip","r_knee"],["r_knee","r_ankle"],
+];
 function angle(a,b,c) {
   if (!a || !b || !c) return NaN;
   const ax=a.x-b.x, ay=a.y-b.y, cx=c.x-b.x, cy=c.y-b.y;
@@ -40,48 +45,107 @@ function describe(frame,aspect) {
       if(a) ends[2+i]=[(a.x-center.x)/torso,(a.y-center.y)/torso];
     }
   }
-  return {angles,ends};
+  // 每根骨段独立提供运动方向，半身画面找不到髋点时仍可用肩、肘、腕作时间对应。
+  const directions=motionBones.map(([from,to])=>{
+    const a=p[from],b=p[to];
+    if(!a || !b) return null;
+    const dx=b.x-a.x,dy=b.y-a.y,length=Math.hypot(dx,dy);
+    return length>=.015?[dx/length,dy/length]:null;
+  });
+  return {angles,ends,directions};
 }
 function dist(a,b) {return a&&b ? Math.hypot(a[0]-b[0],a[1]-b[1]) : NaN;}
-function anchors(n) {
-  const size=Math.min(240,n);
-  return Array.from({length:size},(_,i)=>size===1?0:Math.round(i*(n-1)/(size-1)));
-}
-function align(ref,stu,rt,st) {
-  const r=anchors(ref.length),s=anchors(stu.length),w=r.length,h=s.length;
-  if(Math.min(w,h)===1) return Array(stu.length).fill(0);
-  const cost=new Float64Array(w*h).fill(Infinity),parent=new Uint8Array(w*h);
-  // 在有限的时间带内比较腕踝轨迹；没有关键点的时刻仍按顺序播放完整原片。
-  for(let i=0;i<h;i++) for(let j=0;j<w;j++) {
-    const gap=Math.abs(i/(h-1)-j/(w-1));
-    if(gap>0.24+1/Math.min(h-1,w-1)) continue;
-    const a=stu[s[i]].ends,b=ref[r[j]].ends;
-    let sum=0,n=0;
-    for(let k=0;k<4;k++) {const d=dist(a[k],b[k]); if(Number.isFinite(d)){sum+=Math.min(d,3);n++;}}
-    const local=(n>=2?sum/n:1)+0.35*gap, k=i*w+j;
-    if(!k){cost[k]=local;continue;}
-    let best=i&&j?cost[k-w-1]:Infinity;
-    if(i && cost[k-w]+0.025<best){best=cost[k-w]+0.025;parent[k]=1;}
-    if(j && cost[k-1]+0.025<best){best=cost[k-1]+0.025;parent[k]=2;}
-    cost[k]=local+best;
-  }
-  const first=Array(h).fill(w-1),last=Array(h).fill(0);
-  for(let i=h-1,j=w-1;;) {
-    first[i]=Math.min(first[i],j);last[i]=Math.max(last[i],j);
-    if(!i&&!j) break;
-    const step=parent[i*w+j];if(step!==2)i--;if(step!==1)j--;
-  }
-  const pair=first.map((j,i)=>r[Math.floor((j+last[i])/2)]);
-  pair[0]=0;pair[h-1]=ref.length-1;
-  let segment=0,j=0;
-  return st.map((time,i)=>{
-    while(segment+2<h && i>s[segment+1]) segment++;
-    const l=s[segment],u=s[segment+1],a=pair[segment],b=pair[segment+1];
-    const t=(time-st[l])/(st[u]-st[l]||1),target=rt[a]+t*(rt[b]-rt[a]);
-    j=Math.max(j,a);
-    while(j<b && Math.abs(rt[j+1]-target)<Math.abs(rt[j]-target)) j++;
-    return j;
+
+function closestFrames(frames,times) {
+  let index=0;
+  return times.map(time=>{
+    while(index+1<frames.length && Math.abs(frames[index+1].time-time)<Math.abs(frames[index].time-time)) index++;
+    return index;
   });
+}
+
+function motionSequence(clip,poses,divisions) {
+  const timestamps=Array.from({length:divisions+1},(_,i)=>clip.duration*i/divisions);
+  return closestFrames(clip.frames,timestamps).map(index=>{
+    const pose=poses[index];
+    return [...pose.directions,...Array.from({length:4},(_,i)=>pose.ends[i])];
+  });
+}
+
+function matchCost(a,b,weights) {
+  let count=0,sum=0,weight=0;
+  for(let feature=0;feature<a.length;feature++) {
+    const d=dist(a[feature],b[feature]);
+    if(!Number.isFinite(d)) continue;
+    count++;
+    weight+=weights[feature];
+    sum+=weights[feature]*Math.min(d,1.4);
+  }
+  if(!count) return a.some(Boolean) ? .65 : 0;
+  const strength=Math.min(1,count/3);
+  return strength*sum/weight+(1-strength)*.40;
+}
+
+function motionWeights(reference,student) {
+  return reference[0].map((_,i)=>{
+    let change=0,pairs=0;
+    for(const sequence of [reference,student]) {
+      for(let n=1;n<sequence.length;n++) {
+        const d=dist(sequence[n][i],sequence[n-1][i]);
+        if(Number.isFinite(d)){change+=Math.min(d,1);pairs++;}
+      }
+    }
+    // 挥动中的肢段比静止的肩线更能区分动作时刻。腕、踝相对髋的位置仍提供辅助信息。
+    const importance=.55+Math.min(1.45,10*change/Math.max(1,pairs));
+    return i<motionBones.length?importance:importance*.74;
+  });
+}
+
+function align(reference,student,ref,stu) {
+  const steps=Math.min(160,Math.max(ref.length,stu.length)-1);
+  if(steps<2) return [[0,0],[student.duration,reference.duration]];
+  const subdivisions=3,maxStep=8;
+  const r=motionSequence(reference,ref,steps*subdivisions),s=motionSequence(student,stu,steps);
+  const w=r.length,h=s.length,end=w-1;
+  const weights=motionWeights(r,s);
+  const cost=new Float64Array(w*h).fill(Infinity),parent=new Uint8Array(w*h);
+  cost[0]=0;
+  // 约束示范时间只向前走。无可见动作时，步幅代价把两边拉回接近全片进度，不留空白和停顿。
+  for(let i=1;i<h;i++) {
+    const expected=i*subdivisions,band=Math.ceil(end*.30);
+    const remaining=steps-i;
+    const first=Math.max(i,end-maxStep*remaining,expected-band);
+    const last=Math.min(i*maxStep,end-remaining,expected+band);
+    for(let j=first;j<=last;j++) {
+      const cell=i*w+j;
+      let best=Infinity;
+      for(let step=1;step<=maxStep && step<=j;step++) {
+        const candidate=cost[cell-w-step]+.027*(step-subdivisions)**2;
+        if(candidate<best){best=candidate;parent[cell]=step;}
+      }
+      if(Number.isFinite(best)) cost[cell]=best+matchCost(s[i],r[j],weights)+.42*Math.abs(j-expected)/end;
+    }
+  }
+  const path=Array(h);
+  for(let i=steps,j=end;i>=0;i--) {
+    path[i]=j;
+    j-=parent[i*w+j];
+  }
+  // 三点平滑只作用在内部，保留两个原片的起点和终点。
+  return path.map((j,i)=>[
+    student.duration*i/steps,
+    reference.duration*(i===0||i===steps?j:(path[i-1]+2*j+path[i+1])/4)/end,
+  ]);
+}
+
+function sampledAlignment(reference,student,playback) {
+  let segment=0;
+  const times=student.frames.map(frame=>{
+    while(segment+2<playback.length && frame.time>playback[segment+1][0]) segment++;
+    const [from,base]=playback[segment],[to,target]=playback[segment+1];
+    return base+(target-base)*Math.max(0,Math.min(1,(frame.time-from)/(to-from)));
+  });
+  return closestFrames(reference.frames,times);
 }
 function angleDifference(a,b,index) {
   const delta=Math.abs(a-b);
@@ -160,9 +224,7 @@ function cue({metric,direction}) {
 function recommend({moments,metrics,points,sampled,measured}) {
   const stable=metrics.filter(item=>item.frames>=Math.max(3,sampled*.45) && item.stable/item.frames>=.8)
     .sort((a,b)=>b.stable-a.stable || a.meanDelta-b.meanDelta)[0];
-  const coverageNote=points.any===0?"两段里没有足够的共同关节点。重录时把要练的部位留在画面里。"
-    :!points.legs?"本次下肢可测范围有限。要练脚步时，补一段全身录像。"
-    :points.partial?"部分关节只在少数画面能同时测到。分数以可见部位为准。":"";
+  const coverageNote=points.partial ? "评分取自两段画面中共同可测的关节。" : "";
   const insights=moments.slice(0,3).map((moment,momentIndex)=>{
     const pattern=moment.range
       ? "练习 "+moment.range.start.toFixed(2)+"–"+seconds(moment.range.end)+" 连续 "+moment.observations+" 个采样点存在角差，平均 "+degrees(moment.meanDelta)+"。"
@@ -178,7 +240,7 @@ function recommend({moments,metrics,points,sampled,measured}) {
   }
   const summary=key
     ? (key.range?"先练 "+key.range.start.toFixed(2)+"–"+seconds(key.range.end)+" 的"+key.label+"。":"先在 "+seconds(key.studentTime)+" 停一下，看"+key.label+"。")
-    : points.any?"先把测到的动作顺下来，回看一次起势、过渡和收势。":"先补一段能看清要练部位的录像。";
+    : "先同步回看全段，对照起势、过渡和收势，选一处想先练的动作。";
   const steps=key
     ? [
       {title:"先跟一遍",text:"用半速跟完整示范一遍。走到重点前一拍时放慢，留意这一下是从哪里带过来的。",momentIndex:0},
@@ -187,16 +249,18 @@ function recommend({moments,metrics,points,sampled,measured}) {
       {title:"录一遍复测",text:"沿用同一份示范和机位录完整原速。回看相同示范时刻，先核对"+key.label+"是否更接近，再看前后动作能不能连上。",momentIndex:0}
     ]
     : [
-      {title:points.any?"先跟一遍":"补拍",text:points.any?"先用半速跟一遍示范，挑一段最容易丢掉起点或收势的地方。":"手机放稳，把要练的部位从动作起势到收势都拍进去。"},
+      {title:"先跟一遍",text:"半速同步回看两段，挑一个动作的起点和收势。"},
       {title:"连练两轮",text:"暂停看清一个位置，从前一拍带进来，再接下一拍。能连着做两遍以后提到原速。"},
-      {title:"录一遍复测",text:"用同一机位再录一遍，对照相同示范时刻。先看需要练的部位是否都能测到，再看动作到位的情况。"}
+      {title:"录一遍复测",text:"用同一机位再录一遍，放在一起回看这个动作能不能接上前后两拍。"}
     ];
   return {summary,coverageNote,insights,steps};
 }
 
-function measure(reference,student,r,s,alignment) {
+function measure(reference,student,r,s,playback) {
+  const alignment=sampledAlignment(reference,student,playback);
   const rt=reference.frames.map(f=>f.time),st=student.frames.map(f=>f.time);
   const sums=[0,0,0],counts=[0,0,0],stats=labels.map(label=>({label,frames:0,sum:0,stable:0,differenceFrames:0}));
+  const lastRef=[-1,-1,-1],distinctRef=[0,0,0];
   const maxGap=Math.max(.25,1.6*student.duration/Math.max(1,st.length-1));
   let measured=0,anglesMeasured=0;
   s.forEach((a,i)=>{
@@ -220,11 +284,17 @@ function measure(reference,student,r,s,alignment) {
       if(delta>run.peak.delta) run.peak=point;
     }
     const errors=[body.length?body.reduce((x,y)=>x+y)/body.length:NaN,dist(a.ends[0],b.ends[0]),dist(a.ends[1],b.ends[1])];
-    errors.forEach((v,k)=>{if(Number.isFinite(v)){sums[k]+=v;counts[k]++;}});
+    errors.forEach((v,k)=>{
+      if(!Number.isFinite(v)) return;
+      sums[k]+=v;counts[k]++;
+      if(lastRef[k]!==ri){lastRef[k]=ri;distinctRef[k]++;}
+    });
     if(errors.some(Number.isFinite)) measured++;
   });
   stats.forEach(finishRun);
-  const parts=sums.map((sum,k)=>counts[k]?100*Math.max(0,1-sum/counts[k]/(k?1:90)):null);
+  // 单个测量或反复落在同一示范画面的瞬时结果不能代表一整段得分。
+  const parts=sums.map((sum,k)=>counts[k]>=3 && distinctRef[k]>=2
+    ? 100*Math.max(0,1-sum/counts[k]/(k?1:90)) : null);
   const moments=stats.flatMap(stat=>stat.interval?[stat.interval]:stat.peak?[{...stat.peak,range:null,observations:1,
     meanDelta:stat.peak.delta,priority:stat.peak.delta*.8}]:[])
     .sort((a,b)=>b.priority-a.priority).slice(0,4).map(({priority,...point})=>point);
@@ -233,25 +303,21 @@ function measure(reference,student,r,s,alignment) {
   const sampled=s.length;
   const metrics=stats.map(({label,frames,sum,stable,differenceFrames})=>({label,frames,meanDelta:frames?sum/frames:null,stable,differenceFrames}));
   const legs=Math.min(...stats.slice(3,5).map(stat=>stat.frames))>=Math.max(1,sampled*.25);
-  const partial=!legs||counts.some(count=>count<Math.max(1,sampled*.65))||stats[0].frames<sampled*.65;
+  const partial=!legs||parts.some((score,k)=>score===null || counts[k]<sampled*.65)||stats[0].frames<sampled*.65;
   const coverage={sampled,any:anglesMeasured,metrics,parts:{body:counts[0],left:counts[1],right:counts[2]},legs,partial};
   const guidance=recommend({moments,metrics,points:coverage,sampled,measured});
   const advice=[guidance.summary,...guidance.insights.map(item=>item.text),guidance.coverageNote].filter(Boolean);
   const plan=guidance.steps.map(step=>step.title+"。"+step.text);
-  return {version:assessmentVersion,alignment,body:parts[0],left:parts[1],right:parts[2],overall,measured,moments,coverage,guidance,advice,plan};
+  return {version:ASSESSMENT_VERSION,alignment,playback,body:parts[0],left:parts[1],right:parts[2],overall,measured,moments,coverage,guidance,advice,plan};
 }
 
 export function compare(reference,student) {
   if(!reference.frames.length || !student.frames.length) throw Error("视频中没有可读取的画面。");
   const r=reference.frames.map(f=>describe(f,reference.aspectRatio)),s=student.frames.map(f=>describe(f,student.aspectRatio));
-  const rt=reference.frames.map(f=>f.time),st=student.frames.map(f=>f.time);
-  const alignment=align(r,s,rt,st);
-  return measure(reference,student,r,s,alignment);
+  return measure(reference,student,r,s,align(reference,student,r,s));
 }
 
 export function refreshAssessment(reference,student,stored) {
-  if(stored.version===assessmentVersion) return stored;
-  // 复用原来的对齐路径，使已有 AI 评语和问答里的回看时间仍可定位。
-  const r=reference.frames.map(f=>describe(f,reference.aspectRatio)),s=student.frames.map(f=>describe(f,student.aspectRatio));
-  return measure(reference,student,r,s,stored.alignment);
+  // 旧记录仍用原片坐标保存回看时间，以缓存的关节点重建整段同步路径。
+  return stored.version===ASSESSMENT_VERSION ? stored : compare(reference,student);
 }

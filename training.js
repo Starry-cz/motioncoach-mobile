@@ -1,5 +1,5 @@
 import {listPractices, openPractice, saveCoaching} from "./library.js";
-import {evidenceForFrame} from "./assessment.js";
+import {evidenceForFrame,refreshAssessment} from "./assessment.js";
 
 function sameReference(a, b) {
   const x = a.referencePose, y = b.referencePose;
@@ -14,7 +14,9 @@ function sameReference(a, b) {
 }
 
 function anglesByReference(clip) {
-  const {pose, assessment} = clip.report, groups = new Map();
+  const {pose}=clip.report, groups=new Map();
+  // 只更新进步对比的测量路径，已有片段训练轮数仍使用原记录的编号。
+  const assessment=refreshAssessment(clip.referencePose,pose,clip.report.assessment);
   // 一个示范时刻可能对应多个学生采样。取这一组的平均角差和最明显的学生原片时刻。
   assessment.alignment.forEach((refIndex, index) => {
     const sample = evidenceForFrame(clip.referencePose, pose, assessment.alignment, index);

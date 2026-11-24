@@ -11,7 +11,10 @@ const instructions = {
   plan:"为同一学生制订三次循序渐进的复练。小标题用「第1次」到「第3次」，各自独立成行，小节间留空行。每次都写练哪一段、做几遍、用多快、看哪个位置，以及达到什么表现后可以加速。第一次找位置，第二次练过渡，第三次按原速录制并用同一示范验收。不要指定未测到的动作。",
   chat:"用中文直接回答本次学生的问题。先回答，再给最多两步做法。指定秒数时优先使用该时刻的局部数据。缺少证据就明确说哪一项没有测到。追问可参考这名学生的最近问答。",
 };
-const systemPrompt = "你是带舞蹈与啦啦操复练的教练。像在学生旁边说话，短句，动词具体，例如「先停在这一拍」「把左肘多收一点」。直接讲重点，避免开场夸奖、逐项念分数、行话和重复结论。以当前学生的二维姿态测量为依据。仅用测到的部位和时刻，空分是缺测，不能拿局部满分评价完整动作。身体分来自可测的躯干、髋和膝的角度；腕位分反映手腕相对身体的位置。上臂方向是相对画面竖直向下的角度，和相对躯干的上举角分别解读。只在证据给出连续区间时才说连续出现，单个时刻请用「这一拍」，不要推断节奏、力度、手型、三维姿势、原因或既往进步。不要写「发给我」「我再帮你判断」。用中文、短段落，不加 Markdown。返回 JSON 对象，text 是完整正文字符串，citations 是正文用到的材料 id 数组，只能从证据 cards 择用。";
+const systemPrompt = "你是带舞蹈与啦啦操复练的教练。像在学生旁边说话，用短句和具体动作，例如「先停在这一拍」「把左肘多收一点」。直接讲重点，避免逐项念分数和重复结论。" +
+  "视频可按动作顺序全段同步回看。以当前学生的二维姿态测量为依据，空分表示可测数据不足以评分。覆盖少时，从全段回看和实际测到的动作给出简短做法，采样计数留在分析数据里。不能拿局部满分评价完整动作。" +
+  "身体分来自可测的躯干、髋和膝的角度。腕位分反映手腕相对身体的位置。上臂方向是相对画面竖直向下的角度，和相对躯干的上举角分别解读。证据给出连续区间时才说连续出现。不要推断节奏、力度、手型、三维姿势、原因或既往进步。" +
+  "用中文、短段落，不加 Markdown。返回 JSON 对象，text 是完整正文字符串，citations 是正文用到的材料 id 数组，只能从证据 cards 择用。";
 
 let activeService = "deepseek", profiles, dialog;
 function loadSettings() {
@@ -206,7 +209,10 @@ export function mountCoach(host,{assessment,studentPose,referencePose,seek,saved
         answer.append(el("h3",first),el("p",rest.join("\n"),"coach-prose"));
       } else if(first) answer.append(el("p",block,"coach-prose"));
     }
-    if(item.model) answer.append(el("small",item.model,"coach-model"));
+    if(item.model) {
+      const edition=item.assessmentVersion===assessment.version?"":" · 按旧版测量生成";
+      answer.append(el("small",item.model+edition,"coach-model"));
+    }
     if (seek && item.citations?.length) {
       const links=el("div",null,"coach-citations");
       for (const card of item.citations) {
@@ -279,8 +285,11 @@ export function mountCoach(host,{assessment,studentPose,referencePose,seek,saved
     feedback("正在向"+services[service].name+"请求"+tabs[mode]+"…");render();
     try {
       const evidence=buildEvidence({assessment,studentPose,referencePose},question);
+      // 旧问答保留供学生查看，重新提问只引用使用同一套测量的对话。
+      const history=report.chat.filter(item=>item.assessmentVersion===assessment.version);
       const answer=await generateCoach({service,model:profile.model,key:profile.key,mode,evidence,
-        question,history:report.chat,signal:controller.signal});
+        question,history,signal:controller.signal});
+      answer.assessmentVersion=assessment.version;
       if (controller.signal.aborted || events.signal.aborted) return;
       if (mode==="chat") {
         report={...report,chat:[...report.chat,{...answer,question}]};

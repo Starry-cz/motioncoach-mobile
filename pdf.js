@@ -124,12 +124,12 @@ export async function makePDF({name, assessment, studentPose, referencePose, ima
     await space(122);
     c.fillStyle = "#edf5fb"; c.fillRect(MARGIN, y, CONTENT, 106);
     line(assessment.coverage?.partial?"动作相似度 · 可测部位":"动作相似度", MARGIN + 15, y + 12, 12, true, BLUE);
-    line(score(assessment.overall) + " / 100", MARGIN + 15, y + 34, 27, true, INK);
+    const overall=Number.isFinite(assessment.overall) ? score(assessment.overall)+" / 100" : "仅作回看参考";
+    line(overall, MARGIN + 15, y + 34, 27, true, INK);
     const parts = [["身体", assessment.body], ["左手", assessment.left], ["右手", assessment.right]];
     parts.forEach(([label, value], i) => line(label + "  " + score(value), MARGIN + 16 + i * 151, y + 78, 13, false, INK));
     y += 119;
-    const measured=assessment.coverage?.any ?? assessment.measured;
-    await paragraph("姿态比较 · " + measured + (assessment.coverage? " / "+assessment.coverage.sampled : "") + " 个可测时刻", 11, false, MUTED);
+    await paragraph("两段视频按动作顺序同步回看，分数依据可测姿态。", 11, false, MUTED);
     if (images?.length === 2 && images.every(image => image?.width && image?.height)) {
       await space(194);
       const x = MARGIN + (CONTENT + 10) / 2;
@@ -175,7 +175,7 @@ export async function makePDF({name, assessment, studentPose, referencePose, ima
     for (const [title,entry] of [["AI 教练长评",coaching.review],["AI 训练规划",coaching.plan]]) {
       if (!entry?.text) continue;
       await heading(title);
-      if (entry.model) await paragraph(entry.model,10,false,MUTED);
+      if (entry.model) await paragraph(entry.model+(entry.assessmentVersion!==assessment.version?" · 按旧版测量生成":""),10,false,MUTED);
       await paragraph(entry.text);
       for (const cite of entry.citations || []) await paragraph(cite.label+" · 练习 "+cite.studentTime.toFixed(2)+" 秒",11,false,MUTED);
     }
@@ -183,6 +183,7 @@ export async function makePDF({name, assessment, studentPose, referencePose, ima
       await heading("AI 助教问答");
       for (const entry of coaching.chat) {
         await paragraph(entry.question,13,true,BLUE);
+        if(entry.assessmentVersion!==assessment.version) await paragraph("按旧版测量生成",10,false,MUTED);
         await paragraph(entry.text);
         for (const cite of entry.citations || []) await paragraph(cite.label+" · 练习 "+cite.studentTime.toFixed(2)+" 秒",11,false,MUTED);
       }

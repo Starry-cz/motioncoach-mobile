@@ -1,5 +1,5 @@
 import {extractPose,releasePose} from "./pose.js";
-import {compare,refreshAssessment} from "./assessment.js";
+import {ASSESSMENT_VERSION,compare,refreshAssessment} from "./assessment.js";
 import {savePractice,listPractices,openPractice,deletePractice,saveCoaching,classScores,
   addStandard,listStandards,readStandard,removeStandard} from "./library.js";
 import {replay} from "./replay.js";
@@ -95,7 +95,7 @@ function feedbackMarkup(a) {
   const steps=data.steps.map(step=>'<li><div><h3>'+esc(step.title)+'</h3><p>'+esc(step.text)+'</p>'+
     evidenceButton(step.momentIndex,"定位练习")+'</div></li>').join("");
   return `<section class="review-section" id="feedback">
-    <div class="section-head"><h2>动作评分${a.coverage.partial?' <small>可测部分</small>':""}</h2><button id="go-coach" class="quiet">AI 长评与问答 ↓</button></div>
+    <div class="section-head"><h2>动作评分${a.overall===null?' <small>仅作回看参考</small>':a.coverage.partial?' <small>可测部分</small>':""}</h2><button id="go-coach" class="quiet">AI 长评与问答 ↓</button></div>
     <div class="metrics">${[["总体",a.overall],["身体",a.body],["左腕",a.left],["右腕",a.right]].map(([label,v])=>
       '<div><span>'+label+'</span><strong>'+display(v)+'</strong></div>').join("")}</div>
     ${data.coverageNote?'<p class="coverage-note">'+esc(data.coverageNote)+'</p>':""}
@@ -159,7 +159,7 @@ async function open(id,index,startTime=0) {
     if ($("#classroom")) $("#classroom").ontoggle=async event=>{
       if(!event.target.open || $("#class-content")?.hasChildNodes())return;
       try {
-        const rows=await classScores(data.summary,report=>refreshAssessment(reference,report.pose,report.assessment));
+        const rows=await classScores(data.summary,report=>refreshAssessment(reference,report.pose,report.assessment),ASSESSMENT_VERSION);
         if(view!==revision)return;
         const area=$("#class-content");
         area.innerHTML='<div class="table-scroll"><table><thead><tr><th>学生</th><th>总体</th><th>身体</th><th>左手</th><th>右手</th></tr></thead><tbody>'+
