@@ -219,16 +219,15 @@ export function mountCoach(host,{assessment,studentPose,referencePose,onOpen,see
   const listen=(node,type,fn)=>node.addEventListener(type,fn,{signal:events.signal});
   let current="review",report={...saved,chat:saved?.chat || []},pending=null,needsSave=false;
   host.innerHTML=`
-    <div class="coach-entry">
-      <div class="coach-entry-copy">
-        <span>AI 动作教练</span><h2 id="coach-entry-title">跃教练</h2>
-        <button type="button" id="open-coach" aria-haspopup="dialog" aria-controls="coach-dialog">打开教练 <span aria-hidden="true">↗</span></button>
-      </div>
-      <button type="button" id="open-coach-avatar" aria-haspopup="dialog" aria-controls="coach-avatar-dialog" aria-label="查看跃教练 3D 形象">
-        <img class="coach-entry-portrait" src="./coach-yue.webp" alt="" width="420" height="420">
-        <span>3D 形象</span>
-      </button>
-    </div>
+    <button type="button" id="open-coach" class="coach-entry" aria-haspopup="dialog" aria-controls="coach-dialog"
+      aria-label="打开跃教练，查看长评、训练计划和问答">
+      <span class="coach-avatar-stage" data-state="preview" aria-hidden="true">
+        <img id="coach-avatar-poster" src="./coach-yue-poster.webp" alt="" width="420" height="540">
+        <canvas id="coach-avatar-canvas"></canvas>
+      </span>
+      <span class="coach-entry-copy"><strong id="coach-entry-title">跃教练</strong><span>长评 · 训练计划 · 问答</span></span>
+      <span class="coach-entry-arrow" aria-hidden="true">›</span>
+    </button>
     <dialog id="coach-dialog" class="phone-coach" aria-labelledby="coach-room-title">
       <header class="coach-heading">
         <div class="coach-brand">
@@ -252,7 +251,8 @@ export function mountCoach(host,{assessment,studentPose,referencePose,onOpen,see
         <div class="coach-actions"><button type="button" data-cancel hidden>取消请求</button><button type="button" data-retry hidden>重试保存</button><button type="button" class="primary" data-generate></button></div>
       </div>
     </dialog>`;
-  const closeAvatar=mountCoachAvatar(host,{onOpen,signal:events.signal});
+  mountCoachAvatar(host.querySelector(".coach-avatar-stage"),events.signal);
+  const entry=host.querySelector("#open-coach");
   const room=host.querySelector("#coach-dialog");
   const $=selector=>room.querySelector(selector);
   const area=$("[data-result]"),modes=$(".coach-modes"),scroll=$(".coach-scroll");
@@ -263,6 +263,8 @@ export function mountCoach(host,{assessment,studentPose,referencePose,onOpen,see
   function open() {
     if(room.open)return;
     onOpen?.();
+    // Safari 上触碰人物不会自动聚焦按钮，记录入口以便关闭面板后回到原处。
+    entry.focus({preventScroll:true});
     room.showModal();
   }
 
@@ -356,7 +358,7 @@ export function mountCoach(host,{assessment,studentPose,referencePose,onOpen,see
     listen(button,"click",()=>{current=mode;if(!pending && !needsSave)feedback("");render();});
     modes.append(button);
   }
-  listen(host.querySelector("#open-coach"),"click",open);
+  listen(entry,"click",open);
   listen($("#close-coach"),"click",()=>room.close());
   for(const starter of room.querySelectorAll(".coach-starters button")){
     listen(starter,"click",()=>{field.value=starter.textContent;field.focus();});
@@ -415,5 +417,5 @@ export function mountCoach(host,{assessment,studentPose,referencePose,onOpen,see
   });
   render();
   // 打开其他学生或离开本页时中断未完成的请求，上一份回答不会覆盖新学生。
-  return {close(){events.abort();pending?.abort();closeAvatar();if(room.open)room.close();}};
+  return {close(){events.abort();pending?.abort();if(room.open)room.close();}};
 }

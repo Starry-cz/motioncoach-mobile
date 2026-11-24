@@ -63,7 +63,7 @@ function turningDiameter(model,center) {
   return 2*Math.sqrt(radiusSquared);
 }
 
-export async function mountCoachViewer({canvas,src,signal}) {
+export async function mountCoachViewer({canvas,src,signal,onFirstFrame}) {
   const response=await fetch(src,{signal});
   if(!response.ok)throw Error("暂时无法加载 3D 形象。");
   const {scene:model}=await new GLTFLoader().parseAsync(await response.arrayBuffer(),"");
@@ -102,7 +102,7 @@ export async function mountCoachViewer({canvas,src,signal}) {
   camera.lookAt(0,size.y*.5,0);
 
   const events=new AbortController();
-  let gesture=null,angle=0,frame=0,lastWidth=0,lastHeight=0;
+  let angle=0,frame=0,lastWidth=0,lastHeight=0;
   function redraw() {
     if(frame || events.signal.aborted)return;
     frame=requestAnimationFrame(()=>{
@@ -125,6 +125,10 @@ export async function mountCoachViewer({canvas,src,signal}) {
       turntable.rotation.y=angle*Math.PI/180;
       renderer.render(scene,camera);
       canvas.dataset.angle=String(Math.round(angle));
+      if(onFirstFrame){
+        onFirstFrame();
+        onFirstFrame=null;
+      }
     });
   }
   function face(degrees) {
@@ -133,16 +137,6 @@ export async function mountCoachViewer({canvas,src,signal}) {
   }
   const resize=new ResizeObserver(redraw);
   resize.observe(canvas);
-  const options={signal:events.signal};
-  canvas.addEventListener("pointerdown",event=>{
-    if(!event.isPrimary || event.button!==0)return;
-    gesture={id:event.pointerId,x:event.clientX,start:angle};
-    canvas.setPointerCapture(event.pointerId);
-  },options);
-  canvas.addEventListener("pointermove",event=>{
-    if(gesture?.id===event.pointerId)face(gesture.start+(event.clientX-gesture.x)*.72);
-  },options);
-  canvas.addEventListener("lostpointercapture",()=>{gesture=null;},options);
   function close() {
     if(events.signal.aborted)return;
     events.abort();
@@ -153,7 +147,7 @@ export async function mountCoachViewer({canvas,src,signal}) {
     renderer.forceContextLoss();
     delete canvas.dataset.angle;
   }
-  signal?.addEventListener("abort",close,{...options,once:true});
+  signal?.addEventListener("abort",close,{signal:events.signal,once:true});
   redraw();
   return {rotateBy(degrees){face(angle+degrees);},reset(){face(0);},close};
 }
