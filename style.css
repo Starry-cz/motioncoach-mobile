@@ -177,7 +177,6 @@ progress { width:100%; accent-color:#1b659d; }
 .table-scroll th button { overflow-wrap:anywhere; text-align:left; }
 #loop-times { font-size:.86rem; color:var(--muted); }
 #ab-loop[aria-pressed=true] { color:white; background:var(--blue); }
-#ai-coach { scroll-margin-top:12px; }
 #notice { color:#9e203a; line-height:1.5; }
 .download { display:inline-flex; align-items:center; min-height:44px; padding:0 10px; }
 dialog { max-width:min(92vw,440px); border:1px solid var(--rule); border-radius:14px; padding:18px; color:inherit; }

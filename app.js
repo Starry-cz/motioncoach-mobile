@@ -106,7 +106,7 @@ function scoreMarkup(a) {
     ? '<div class="score-empty"><strong>暂未评分</strong><span>连续可测的动作片段不足。仍可同步回看。</span></div>'
     : '<div class="metrics"><div><span>'+scope+'相似度</span><strong>'+display(a.overall)+'</strong></div>'+parts+'</div>';
   return `<section class="review-section scoring" id="score-review">
-    <div class="section-head"><h2>动作评分</h2><button id="go-coach" class="quiet">AI 教练 ↓</button></div>
+    <div class="section-head"><h2>动作评分</h2></div>
     ${result}
     ${a.overall!==null && a.guidance.coverageNote?'<p class="coverage-note">'+esc(a.guidance.coverageNote)+'</p>':""}
     <details class="metric-details"><summary>评分依据</summary><p>${a.scoreMode==="upper"
@@ -176,19 +176,18 @@ async function open(id,index,startTime=0) {
     const students=data.summary.students.map((s,i)=>'<option value="'+i+'" '+(i===index?'selected':'')+'>'+esc(s.name)+'</option>').join("");
     review.innerHTML=`<div class="page-title"><h1>动作复盘</h1><button id="pdf" class="quiet">导出个人 PDF</button></div>
       <div class="review-selector"><select id="student-select" aria-label="当前学生">${students}</select></div><div id="pdf-result"></div>
+      <section id="ai-coach" aria-labelledby="coach-entry-title"></section>
       ${playerMarkup(a)}
       ${feedbackMarkup(a)}
-      <section id="ai-coach" tabindex="-1"></section>
       ${data.summary.students.length>1?'<details class="review-section" id="classroom"><summary>全班总览 · '+data.summary.students.length+' 名学生</summary><div id="class-content"></div></details>':""}`;
     player=replay(review,reference,pose,a,data.referenceURL,data.studentURL);
     if (startTime>0) player.seek(startTime);
-    const aiArea=$("#ai-coach");
-    coach=mountCoach(aiArea,{assessment:a,referencePose:reference,studentPose:pose,seek:(time,label)=>player.seek(time,label),
+    coach=mountCoach($("#ai-coach"),{assessment:a,referencePose:reference,studentPose:pose,
+      onOpen:()=>player.pause(),seek:(time,label)=>player.seek(time,label),
       saved:data.coaching,onChange:async state=>{
         const version=await saveCoaching(id,index,state,data.coachingVersion);
         data.coaching=state;data.coachingVersion=version;
       }});
-    $("#go-coach").onclick=()=>{aiArea.focus({preventScroll:true});aiArea.scrollIntoView({block:"start"});};
     if ($("#classroom")) $("#classroom").ontoggle=async event=>{
       if(!event.target.open || $("#class-content")?.hasChildNodes())return;
       try {

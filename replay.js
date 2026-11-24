@@ -250,7 +250,7 @@ export function replay(view,ref,stu,analysis,refURL,stuURL) {
   on(frameData,"toggle",()=>{if(frameData.open)showAngles(nearest(stu.frames,desired));});
   showMarks();
   position(0);
-  return {seek, snapshot(){
+  return {seek,pause,snapshot(){
     const images=videos.map((v,i)=>{
       if(v.readyState<2 || v.seeking) return null;
       const c=document.createElement("canvas");c.width=Math.min(820,v.videoWidth);c.height=Math.round(c.width*v.videoHeight/v.videoWidth);

@@ -5,9 +5,14 @@ const services = {
   bailian: {name:"阿里云百炼（北京）", url:"https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions", models:["qwen-plus","qwen-flash"]},
 };
 const storageKey = "motioncoach-phone-ai-settings";
-const tabs = {review:"教练长评",plan:"训练计划",chat:"证据问答"};
+const tabs = {review:"长评",plan:"训练计划",chat:"问答"};
+const emptyViews = {
+  review:["先看哪一拍","生成长评，找到最值得先练的动作。"],
+  plan:["安排下一轮复练","从定点慢练到整段录制。"],
+  chat:["想问哪个动作？","可以按关节或视频时刻提问。"],
+};
 const instructions = {
-  review:"写给刚看完这段录像的学生。用四小节，标题分别是「先看哪里」「动作对照」「这轮怎么练」「下一次怎么判断」，每个标题单独一行，小节之间空一行。先指出最值得练的位置及优先原因。对于证据充分的录像，挑两三个互补的动作观察点，优先覆盖不同部位或时段；若某点在许多共同画面里接近示范，可指出练别处时要保留它。至少把一条可点击证据与具体练法、复测动作连起来。长度随材料增减。缺测时充分讲可见部位，补录只在最后提一次。",
+  review:"写给刚看完这段录像的学生。用四小节，标题分别是「先看哪里」「动作对照」「这轮怎么练」「下一次怎么判断」，每个标题单独一行，小节之间空一行。「先看哪里」只用两三句口语说明先练哪一拍、看哪个关节、为什么从这里开始。其余小节展开两三个互补的观察点，优先覆盖不同部位或时段；也可点出已有的稳定动作。至少把一条证据与具体练法、复测动作连起来。把测量数字用在说明差异的位置，避免连续罗列帧数。长度随材料增减。缺测时充分讲可见部位，补录只在最后提一次。",
   plan:"为同一学生制订三次循序渐进的复练。小标题用「第1次」到「第3次」，各自独立成行，小节间留空行。每次都写练哪一段、做几遍、用多快、看哪个位置，以及达到什么表现后可以加速。第一次找位置，第二次练过渡，第三次按原速录制并用同一示范验收。不要指定未测到的动作。",
   chat:"用中文直接回答本次学生的问题。先回答，再给最多两步做法。指定秒数时优先使用该时刻的局部数据。缺少证据就明确说哪一项没有测到。追问可参考这名学生的最近问答。",
 };
@@ -69,7 +74,7 @@ function el(tag, content, className) {
   return node;
 }
 
-export function openCoachSettings() {
+export function openCoachSettings({onClose}={}) {
   loadSettings();
   if (dialog?.open) return;
   dialog=el("dialog",null,"coach-settings");
@@ -118,7 +123,7 @@ export function openCoachSettings() {
   };
   dialog.querySelector("[data-close]").onclick=()=>dialog.close();
   const current=dialog;
-  current.addEventListener("close",()=>{current.remove();if(dialog===current)dialog=null;},{once:true});
+  current.addEventListener("close",()=>{current.remove();if(dialog===current)dialog=null;onClose?.();},{once:true});
   dialog.showModal();
 }
 
@@ -194,41 +199,90 @@ export async function generateCoach({service,model,key,mode,evidence,question,hi
   return {text:result.text.trim(),model,citations};
 }
 
-export function mountCoach(host,{assessment,studentPose,referencePose,seek,saved,onChange}) {
+function answerSections(text) {
+  // 识别独立的小节标题，同时完整保留旧报告中的普通段落。
+  const parts=text.split(/^[ \t]*(先看哪里|动作对照|这轮怎么练|下一次怎么判断|第[1-3一二三]次)[ \t]*[：:]?[ \t]*$/m);
+  const sections=[];
+  if(parts[0].trim())sections.push({heading:"",text:parts[0].trim()});
+  for(let i=1;i<parts.length;i+=2)sections.push({heading:parts[i],text:parts[i+1].trim()});
+  if(sections.length===1 && !sections[0].heading){
+    const [lead,...rest]=sections[0].text.split(/\n\s*\n/);
+    if(rest.length)return [{heading:"",text:lead},{heading:"完整内容",text:rest.join("\n\n")}];
+  }
+  return sections;
+}
+
+export function mountCoach(host,{assessment,studentPose,referencePose,onOpen,seek,saved,onChange}) {
   loadSettings();
   const events=new AbortController();
   const listen=(node,type,fn)=>node.addEventListener(type,fn,{signal:events.signal});
   let current="review",report={...saved,chat:saved?.chat || []},pending=null,needsSave=false;
-  host.classList.add("panel","phone-coach");
   host.innerHTML=`
-    <div class="coach-heading"><div><h2>AI 动作教练</h2><small data-service></small></div><button type="button" data-settings>AI 服务设置</button></div>
-    <div class="coach-modes" role="group" aria-label="教练功能"></div>
-    <label class="coach-question" hidden>你的问题<textarea rows="2" maxlength="800" placeholder="例如，第 3 秒的右膝与示范相差多少？"></textarea></label>
-    <div class="coach-actions"><button type="button" class="primary" data-generate></button><button type="button" data-cancel hidden>取消请求</button><button type="button" data-retry hidden>重试保存</button></div>
-    <p data-status role="status"></p>
-    <div data-result></div>`;
-  const area=host.querySelector("[data-result]"),modes=host.querySelector(".coach-modes");
-  const generate=host.querySelector("[data-generate]"),cancel=host.querySelector("[data-cancel]");
-  const status=host.querySelector("[data-status]"),retry=host.querySelector("[data-retry]");
-  const field=host.querySelector("textarea"),serviceLabel=host.querySelector("[data-service]");
+    <div class="coach-entry">
+      <div class="coach-entry-copy">
+        <span>AI 动作教练</span><h2 id="coach-entry-title">跃教练</h2>
+        <button type="button" id="open-coach" aria-haspopup="dialog" aria-controls="coach-dialog">打开教练 <span aria-hidden="true">↗</span></button>
+      </div>
+      <img class="coach-entry-portrait" src="./coach-yue.webp" alt="" width="420" height="420">
+    </div>
+    <dialog id="coach-dialog" class="phone-coach" aria-labelledby="coach-room-title">
+      <header class="coach-heading">
+        <div class="coach-brand">
+          <div class="coach-avatar"><img src="./coach-yue.webp" alt="" width="420" height="420"></div>
+          <div><h2 id="coach-room-title">跃教练</h2><small>AI 动作教练</small></div>
+        </div>
+        <button type="button" id="close-coach" autofocus>返回复盘</button>
+      </header>
+      <div class="coach-tabs coach-modes" role="group" aria-label="教练功能"></div>
+      <div class="coach-scroll">
+        <div class="coach-empty"><h3 data-empty-title></h3><p data-empty-text></p></div>
+        <div data-result></div>
+        <div class="coach-starters" hidden>
+          <button type="button">这段最该先改哪里？</button>
+          <button type="button">下一遍怎么检查进步？</button>
+        </div>
+      </div>
+      <div class="coach-controls">
+        <label class="coach-question" hidden>你的问题<textarea rows="2" maxlength="800" placeholder="例如，第 3 秒的右膝怎么调整？"></textarea></label>
+        <p data-status role="status"></p>
+        <div class="coach-actions"><button type="button" data-cancel hidden>取消请求</button><button type="button" data-retry hidden>重试保存</button><button type="button" class="primary" data-generate></button></div>
+      </div>
+    </dialog>`;
+  const room=host.querySelector("#coach-dialog");
+  const $=selector=>room.querySelector(selector);
+  const area=$("[data-result]"),modes=$(".coach-modes"),scroll=$(".coach-scroll");
+  const generate=$("[data-generate]"),cancel=$("[data-cancel]");
+  const status=$("[data-status]"),retry=$("[data-retry]"),field=$("textarea");
+  let renderedMode,renderedContent;
 
-  function showService() {
-    const spec=services[activeService],profile=profileFor(activeService);
-    serviceLabel.textContent=profile?profile.model:spec.name+" · 未配置";
+  function open() {
+    if(room.open)return;
+    onOpen?.();
+    room.showModal();
   }
 
-  function renderAnswer(item) {
+  function appendProse(container,text) {
+    for(const part of text.split(/\n\s*\n/))if(part.trim())container.append(el("p",part,"coach-prose"));
+  }
+
+  function renderAnswer(item,mode) {
     const answer=el("article",null,"coach-answer");
-    if (item.question) answer.append(el("h3",item.question));
-    for(const block of item.text.split(/\n\s*\n/)) {
-      const [first,...rest]=block.trim().split("\n");
-      if(rest.length && /^(先看哪里|动作对照|这轮怎么练|下一次怎么判断|第[1-3一二三]次)$/.test(first)) {
-        answer.append(el("h3",first),el("p",rest.join("\n"),"coach-prose"));
-      } else if(first) answer.append(el("p",block,"coach-prose"));
-    }
-    if(item.model) {
-      const edition=item.assessmentVersion===assessment.version?"":" · 按旧版测量生成";
-      answer.append(el("small",item.model+edition,"coach-model"));
+    if(mode==="chat"){
+      answer.classList.add("coach-message");
+      answer.append(el("h3",item.question));
+      appendProse(answer,item.text);
+    }else{
+      const [lead,...sections]=answerSections(item.text);
+      const priority=el("section",null,"coach-priority");
+      if(lead.heading)priority.append(el("h3",lead.heading));
+      appendProse(priority,lead.text);
+      answer.append(priority);
+      for(const section of sections){
+        const detail=el("details",null,"coach-segment");
+        detail.append(el("summary",section.heading));
+        appendProse(detail,section.text);
+        answer.append(detail);
+      }
     }
     if (seek && item.citations?.length) {
       const links=el("div",null,"coach-citations");
@@ -236,22 +290,39 @@ export function mountCoach(host,{assessment,studentPose,referencePose,seek,saved
         const button=el("button","回看 "+card.studentTime.toFixed(2)+" 秒 · "+card.label);
         button.type="button";
         button.onclick=()=>{
+          // 关闭教练面板后，再把视频定位到本机测量的证据帧。
+          room.close();
           seek(card.studentTime,card.label);
-          host.closest("#review")?.querySelector(".videos")?.scrollIntoView({block:"start"});
+          host.closest("#review")?.querySelector(".review-player")?.scrollIntoView({block:"start"});
         };
         links.append(button);
       }
-      answer.append(links);
+      if(mode==="chat")answer.append(links);
+      else answer.querySelector(".coach-priority").after(links);
+    }
+    if(item.model) {
+      const edition=item.assessmentVersion===assessment.version?"":" · 按旧版测量生成";
+      answer.append(el("small",item.model+edition,"coach-model"));
     }
     return answer;
   }
 
   function render() {
     for (const button of modes.children) button.setAttribute("aria-pressed",String(button.dataset.mode===current));
-    host.querySelector(".coach-question").hidden=current!=="chat";
+    $(".coach-question").hidden=current!=="chat";
     const responses=current==="chat"?report.chat:(report[current]?[report[current]]:[]);
-    area.replaceChildren(...responses.map(renderAnswer));
-    generate.textContent=current==="chat"?"发送问题":(responses.length?"重新生成":"生成")+tabs[current];
+    $(".coach-empty").hidden=responses.length>0;
+    $(".coach-starters").hidden=current!=="chat" || responses.length>0;
+    const [title,instruction]=emptyViews[current];
+    $("[data-empty-title]").textContent=title;
+    $("[data-empty-text]").textContent=instruction;
+    if(renderedMode!==current || renderedContent!==report[current]){
+      area.replaceChildren(...responses.map(item=>renderAnswer(item,current)));
+      scroll.scrollTop=current==="chat"?scroll.scrollHeight:0;
+      renderedMode=current;
+      renderedContent=report[current];
+    }
+    generate.textContent=current==="chat"?"发送问题":(responses.length?"重新生成":"生成"+tabs[current]);
     generate.disabled=Boolean(pending);
     retry.hidden=!needsSave;
     retry.disabled=Boolean(pending);
@@ -280,8 +351,11 @@ export function mountCoach(host,{assessment,studentPose,referencePose,seek,saved
     listen(button,"click",()=>{current=mode;if(!pending && !needsSave)feedback("");render();});
     modes.append(button);
   }
-  listen(host.querySelector("[data-settings]"),"click",openCoachSettings);
-  listen(window,"motioncoach-ai-settings",showService);
+  listen(host.querySelector("#open-coach"),"click",open);
+  listen($("#close-coach"),"click",()=>room.close());
+  for(const starter of room.querySelectorAll(".coach-starters button")){
+    listen(starter,"click",()=>{field.value=starter.textContent;field.focus();});
+  }
   listen(cancel,"click",()=>pending?.abort());
   listen(retry,"click",async()=>{
     pending=new AbortController();render();
@@ -294,7 +368,16 @@ export function mountCoach(host,{assessment,studentPose,referencePose,seek,saved
     if (pending) return;
     const mode=current,question=mode==="chat"?field.value.trim():"",service=activeService,profile=profileFor(service);
     if (mode==="chat" && !question) {feedback("请先输入想问的动作或时刻。",true);field.focus();return;}
-    if (!profile) {feedback("请先配置此服务的 API Key，然后再次点生成。");openCoachSettings();return;}
+    if (!profile) {
+      feedback("请配置 AI 接口后再生成。");
+      room.close();
+      openCoachSettings({onClose:()=>{
+        if(events.signal.aborted)return;
+        if(profileFor(activeService))feedback("");
+        open();
+      }});
+      return;
+    }
     const controller=new AbortController();
     let timedOut=false;
     const timer=setTimeout(()=>{timedOut=true;controller.abort();},90000);
@@ -325,7 +408,7 @@ export function mountCoach(host,{assessment,studentPose,referencePose,seek,saved
       if (!events.signal.aborted) {cancel.hidden=true;render();}
     }
   });
-  showService();render();
+  render();
   // 打开其他学生或离开本页时中断未完成的请求，上一份回答不会覆盖新学生。
-  return {close(){events.abort();pending?.abort();}};
+  return {close(){events.abort();pending?.abort();if(room.open)room.close();}};
 }
