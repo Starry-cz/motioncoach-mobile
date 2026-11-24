@@ -4,18 +4,20 @@
 <meta name="theme-color" content="#143a60"><meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="动作研习室"><title>动作研习室 · 随身练习</title>
 <link rel="apple-touch-icon" href="./icon-180.png"><link rel="icon" href="./icon-192.png">
-<link rel="manifest" href="./manifest.webmanifest"><link rel="stylesheet" href="./style.css">
-</head><body><header><div class="brand"><img src="./icon-180.png" width="42" height="42" alt=""><div><strong>动作研习室</strong><small>舞蹈与啦啦操</small></div></div><button id="install" class="quiet">安装到主屏幕</button><a id="android-apk" class="apk-link" href="./motioncoach-android.apk" download="动作研习室-Android.apk" hidden>下载安卓安装包</a></header>
-<main><div class="topline"><nav aria-label="工作区"><button id="work" aria-current="page">练习台</button><button id="records">练习记录</button></nav><span id="offline-state" role="status" data-ready="no">准备离线资源…</span></div>
+<link rel="manifest" href="./manifest.webmanifest"><link rel="stylesheet" href="./style.css"><link rel="stylesheet" href="./coach.css"><link rel="stylesheet" href="./training.css">
+</head><body><header><div class="brand"><img src="./icon-180.png" width="42" height="42" alt=""><div><strong>动作研习室</strong><small>舞蹈与啦啦操</small></div></div><div class="header-actions"><button id="ai-settings" class="quiet">AI 接口</button><button id="install" class="quiet">安装到主屏幕</button><a id="android-apk" class="apk-link" href="./motioncoach-android.apk" download="动作研习室-Android.apk" hidden>下载安卓安装包</a></div></header>
+<main><div class="topline"><nav aria-label="工作区"><button id="work" aria-current="page">练习台</button><button id="records">练习记录</button><button id="standards-nav">标准库</button><button id="training-nav">训练中心</button></nav><span id="offline-state" role="status" data-ready="no">准备离线资源…</span></div>
 <section id="stage" data-state="form" aria-live="off">
 <div id="form"><h1>新建动作分析</h1><p class="intro">选一份标准示范，再选学生录像。视频在这部手机上分析。</p>
 <div class="pickers"><label for="ref-file"><strong>标准示范</strong><span id="ref-name">选择一段视频</span><input id="ref-file" type="file" accept="video/*,.mov,.mp4,.m4v,.webm"></label>
 <label for="stu-files"><strong>学生练习</strong><span id="stu-name">选择一段或多段视频</span><input id="stu-files" type="file" multiple accept="video/*,.mov,.mp4,.m4v,.webm"></label></div>
-<div class="form-actions"><span>每人一段 · 每段 3 秒至 20 分钟</span><button class="primary" id="analyze" disabled>开始分析</button></div>
+<div class="form-actions"><span>每人一段 · 每段 3 秒至 20 分钟</span><button class="quiet" id="choose-standard">从标准库选择</button><button class="primary" id="analyze" disabled>开始分析</button></div>
 <div id="progress-area" hidden><div><strong id="progress-title">准备视频</strong><button class="quiet" id="cancel">取消</button></div><progress id="progress" max="1" value="0"></progress><small>请保持应用在前台，直到分析完成。</small></div>
 </div><section id="history" hidden><h1>练习记录</h1><div id="entries"></div></section><section id="review" hidden></section>
+<section id="standards" hidden><div class="space"><h1>标准库</h1><label class="pick-standard">添加标准视频<input type="file" accept="video/*,.mov,.mp4,.m4v,.webm" id="add-standard"></label></div><div id="standard-entries"></div></section>
+<section id="training" hidden></section>
 <p id="notice" role="alert"></p>
 </section>
-<footer>动作研习室 <span>·</span> 手机端侧分析</footer></main>
+<footer>动作研习室 <span>·</span> 手机版 1.1</footer></main>
 <dialog id="install-dialog"><h2>安装到 iPhone</h2><ol><li>在 Safari 中打开本页，点工具栏的「分享」。</li><li>选「添加到主屏幕」，然后点「添加」。</li><li>从新图标打开一次，等右上角显示「离线可用」，以后可断网分析。</li></ol><p>练习记录保存在当前设备。清除网站数据会同时清除记录，重要报告可先导出 PDF。</p><button id="close-install" class="primary">知道了</button></dialog>
 <script type="module" src="./app.js"></script></body></html>

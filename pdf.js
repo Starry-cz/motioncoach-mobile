@@ -51,7 +51,7 @@ function packagePDF(pages) {
   return new Blob(parts, {type:"application/pdf"});
 }
 
-export async function makePDF({name, assessment, studentPose, referencePose, images, imageTimes}) {
+export async function makePDF({name, assessment, studentPose, referencePose, images, imageTimes, coaching={}, classroom}) {
   const sheet = document.createElement("canvas");
   sheet.width = WIDTH * 2; sheet.height = HEIGHT * 2;
   const c = sheet.getContext("2d", {alpha:false});
@@ -68,7 +68,7 @@ export async function makePDF({name, assessment, studentPose, referencePose, ima
   function reset() {
     c.fillStyle = "white"; c.fillRect(0, 0, WIDTH, HEIGHT);
     lines = [];
-    line("动作研习室  /  个人复盘", MARGIN, 23, 10, true, BLUE);
+    line(classroom ? "动作研习室  /  班级讲评" : "动作研习室  /  个人复盘", MARGIN, 23, 10, true, BLUE);
     c.fillStyle = "#d2e1ee"; c.fillRect(MARGIN, 42, CONTENT, 1);
     y = 58;
   }
@@ -107,6 +107,19 @@ export async function makePDF({name, assessment, studentPose, referencePose, ima
   }
   try {
     reset();
+    if (classroom) {
+      await heading("班级讲评");
+      await paragraph(classroom.title,18,true);
+      await paragraph("共同示范 · "+classroom.rows.length+" 名学生");
+      for (const row of classroom.rows) {
+        await space(105);
+        await paragraph(row.name,15,true,BLUE);
+        await paragraph("总体 "+score(row.overall)+"　身体 "+score(row.body)+"　左手 "+score(row.left)+"　右手 "+score(row.right));
+        if(row.focus) await paragraph("重点 · "+row.focus+(Number.isFinite(row.firstMoment)?"　练习 "+row.firstMoment.toFixed(2)+" 秒":""),12);
+      }
+      await flush();
+      return packagePDF(pages);
+    }
     await paragraph(name, 22, true);
     await space(122);
     c.fillStyle = "#edf5fb"; c.fillRect(MARGIN, y, CONTENT, 106);
@@ -143,6 +156,22 @@ export async function makePDF({name, assessment, studentPose, referencePose, ima
       await paragraph("第 " + (index + 1) + " 次练习", 14, true, BLUE);
       await paragraph(value);
       y += 6;
+    }
+    // 将同一名学生实际保存的云端反馈纳入导出，模型名和对应时刻随正文保留。
+    for (const [title,entry] of [["AI 教练长评",coaching.review],["AI 训练规划",coaching.plan]]) {
+      if (!entry?.text) continue;
+      await heading(title);
+      if (entry.model) await paragraph(entry.model,10,false,MUTED);
+      await paragraph(entry.text);
+      for (const cite of entry.citations || []) await paragraph(cite.label+" · 练习 "+cite.studentTime.toFixed(2)+" 秒",11,false,MUTED);
+    }
+    if (coaching.chat?.length) {
+      await heading("AI 助教问答");
+      for (const entry of coaching.chat) {
+        await paragraph(entry.question,13,true,BLUE);
+        await paragraph(entry.text);
+        for (const cite of entry.citations || []) await paragraph(cite.label+" · 练习 "+cite.studentTime.toFixed(2)+" 秒",11,false,MUTED);
+      }
     }
     await flush();
     return packagePDF(pages);

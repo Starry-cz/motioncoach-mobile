@@ -1,3 +1,4 @@
+import {evidenceForFrame} from "./assessment.js";
 const edges=[["l_shoulder","r_shoulder"],["l_hip","r_hip"],["l_shoulder","l_hip"],["r_shoulder","r_hip"]];
 for(const side of ["l","r"]) for(const [a,b] of [["shoulder","elbow"],["elbow","wrist"],["hip","knee"],["knee","ankle"]]) edges.push([side+"_"+a,side+"_"+b]);
 
@@ -24,6 +25,9 @@ export function replay(view,ref,stu,analysis,refURL,stuURL) {
   const slider=view.querySelector("#timeline"), play=view.querySelector("#play"), stamp=view.querySelector("#stamp");
   const speed=view.querySelector("#speed"),clips=[ref,stu],videos=[rv,sv];
   let raf=0,closed=false,playing=false,desired=0, currentRef=0;
+  let markA=null,markB=null,loop=false,lastFrame=-1;
+  const loopButton=view.querySelector("#ab-loop"),positions=view.querySelector("#loop-times");
+  const frameData=view.querySelector("#frame-data"),angleRows=view.querySelector("#frame-angles");
   const events=new AbortController(),on=(node,event,fn)=>node.addEventListener(event,fn,{signal:events.signal});
   // 竖持手机回看横屏舞蹈时，默认让每位学生占满行宽。
   const layout=view.querySelector("#layout"),pair=view.querySelector(".videos");
@@ -34,6 +38,23 @@ export function replay(view,ref,stu,analysis,refURL,stuURL) {
   rv.src=refURL;sv.src=stuURL;rv.muted=true;sv.muted=true;
   videos.forEach((v,i)=>{v.parentElement.style.aspectRatio=String(clips[i].aspectRatio);});
   slider.max=stu.duration;slider.step="0.01";
+  function showMarks(){
+    const valid=markA!==null && markB!==null && markB>markA;
+    if(!valid)loop=false;
+    loopButton.disabled=!valid;loopButton.setAttribute("aria-pressed",String(loop));
+    const format=t=>t===null?"—":t.toFixed(2)+" 秒";
+    positions.textContent="A "+format(markA)+" · B "+format(markB)+(markA!==null && markB!==null && !valid?"（B 须晚于 A）":"");
+  }
+  function showAngles(i){
+    if(!frameData.open || lastFrame===i)return;
+    lastFrame=i;angleRows.replaceChildren();
+    const info=evidenceForFrame(ref,stu,analysis.alignment,i);
+    for(const angle of info.angles){
+      const row=angleRows.insertRow();
+      for(const value of [angle.label,...[angle.referenceAngle,angle.studentAngle,angle.delta].map(v=>v.toFixed(1)+"°")])row.insertCell().textContent=value;
+    }
+    if(!info.angles.length){const cell=angleRows.insertRow().insertCell();cell.colSpan=4;cell.textContent="此时刻缺少可测关节。";}
+  }
   function update(time,seekStudent=false) {
     desired=Math.min(stu.duration,Math.max(0,time));
     if(seekStudent && sv.readyState>=1) sv.currentTime=desired;
@@ -45,16 +66,19 @@ export function replay(view,ref,stu,analysis,refURL,stuURL) {
     // 示范按单调动作路径插值连续回看；未测到骨架的画面仍显示原片。
     if(rv.readyState>=1 && (!playing || !rv.seeking) && Math.abs(rv.currentTime-currentRef)>0.025) rv.currentTime=currentRef;
     paint(sv,sc,stu.frames[i],"#afc0ff");paint(rv,rc,ref.frames[preceding(ref.frames,currentRef)],"#44c8ff");
+    showAngles(i);
     slider.value=desired;stamp.textContent="练习 "+desired.toFixed(2)+" 秒 · 示范 "+currentRef.toFixed(2)+" 秒";
   }
-  function tick(){if(closed||!playing)return;update(sv.currentTime);raf=requestAnimationFrame(tick);}
+  function tick(){if(closed||!playing)return;if(loop && sv.currentTime>=markB)update(markA,true);else update(sv.currentTime);raf=requestAnimationFrame(tick);}
   function pause(){playing=false;sv.pause();cancelAnimationFrame(raf);play.textContent="同步播放";}
   function seek(t){pause();update(t,true);}
-  videos.forEach(v=>{on(v,"loadeddata",()=>update(desired));});
-  on(sv,"ended",()=>{pause();update(stu.duration);});
+  on(rv,"loadeddata",()=>update(desired));
+  on(sv,"loadeddata",()=>update(desired,Math.abs(sv.currentTime-desired)>.025));
+  on(sv,"ended",()=>{if(loop && playing){update(markA,true);sv.play().catch(pause);}else{pause();update(stu.duration);}});
   on(play,"click",async()=>{
     if(playing){pause();return;}
-    if(desired>=stu.duration-0.05)seek(0);
+    if(loop && (desired<markA || desired>=markB))seek(markA);
+    else if(desired>=stu.duration-0.05)seek(0);
     try{sv.playbackRate=Number(speed.value);await sv.play();if(closed)return;playing=true;play.textContent="暂停";tick();}
     catch{pause();stamp.textContent="此视频无法播放，请使用手机支持的原片格式。";}
   });
@@ -65,6 +89,11 @@ export function replay(view,ref,stu,analysis,refURL,stuURL) {
     seek(stu.frames[i].time);
   });
   on(layout,"click",()=>{pair.classList.toggle("stacked");nameLayout();});
+  on(view.querySelector("#mark-a"),"click",()=>{markA=desired;showMarks();});
+  on(view.querySelector("#mark-b"),"click",()=>{markB=desired;showMarks();});
+  on(loopButton,"click",()=>{loop=!loop;showMarks();if(loop)seek(markA);});
+  on(frameData,"toggle",()=>{if(frameData.open)showAngles(preceding(stu.frames,desired));});
+  showMarks();
   update(0);
   return {seek, snapshot(){
     const images=videos.map((v,i)=>{

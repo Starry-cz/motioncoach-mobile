@@ -68,6 +68,30 @@ function align(ref,stu,rt,st) {
     return j;
   });
 }
+function angleDifference(a,b,index) {
+  const delta=Math.abs(a-b);
+  return index===0 ? Math.min(delta,360-delta) : delta;
+}
+
+// 问到具体秒数时，沿用评分已对齐的实测画面和同一套可见度、角度定义。
+export function evidenceAt(reference,student,alignment,seconds) {
+  if(seconds<0 || seconds>student.duration) throw Error("提问的时刻超出练习范围，请输入 0 至 "+student.duration.toFixed(2)+" 秒。");
+  const frames=student.frames;
+  let index=0;
+  while(index+1<frames.length && Math.abs(frames[index+1].time-seconds)<Math.abs(frames[index].time-seconds)) index++;
+  return evidenceForFrame(reference,student,alignment,index);
+}
+
+// 进步追踪已持有学生采样序号，直接复用问答的角差定义，无需再次扫描时间轴。
+export function evidenceForFrame(reference,student,alignment,index) {
+  const stu=student.frames[index],ref=reference.frames[alignment[index]];
+  const a=describe(stu,student.aspectRatio),b=describe(ref,reference.aspectRatio);
+  return {studentTime:stu.time,referenceTime:ref.time,angles:labels.flatMap((label,i)=>{
+    const delta=angleDifference(a.angles[i],b.angles[i],i);
+    return Number.isFinite(delta)?[{label,studentAngle:a.angles[i],referenceAngle:b.angles[i],delta}]:[];
+  })};
+}
+
 export function compare(reference,student) {
   if(!reference.frames.length || !student.frames.length) throw Error("视频中没有可读取的画面。");
   const r=reference.frames.map(f=>describe(f,reference.aspectRatio)),s=student.frames.map(f=>describe(f,student.aspectRatio));
@@ -77,7 +101,7 @@ export function compare(reference,student) {
   s.forEach((a,i)=>{
     const ri=alignment[i],b=r[ri],body=[];
     a.angles.forEach((v,k)=>{
-      const d=Math.abs(v-b.angles[k]),delta=k===0?Math.min(d,360-d):d;
+      const delta=angleDifference(v,b.angles[k],k);
       if(!Number.isFinite(delta)) return;
       if(k<5) body.push(delta);
       if(delta>=3 && (!peaks[k]||delta>peaks[k].delta)) peaks[k]={studentIndex:i,referenceIndex:ri,label:labels[k],delta,

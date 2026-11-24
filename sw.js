@@ -1,6 +1,6 @@
-const CACHE="motioncoach-pocket-1.0.0-3";
+const CACHE="motioncoach-pocket-1.1.0-1";
 const FILES=["./","./index.html","./app.js","./style.css","./manifest.webmanifest","./icon-180.png","./icon-192.png","./icon-512.png",
-  "./assessment.js","./pose.js","./replay.js","./pdf.js","./library.js","./vendor/vision_bundle.mjs","./vendor/pose_landmarker_lite.task",
+  "./assessment.js","./pose.js","./replay.js","./pdf.js","./library.js","./coach.js","./coach.css","./training.js","./training.css","./vendor/vision_bundle.mjs","./vendor/pose_landmarker_lite.task",
   "./vendor/wasm/vision_wasm_internal.js","./vendor/wasm/vision_wasm_internal.wasm","./vendor/wasm/vision_wasm_nosimd_internal.js",
   "./vendor/wasm/vision_wasm_nosimd_internal.wasm","./vendor/LICENSE-mediapipe.txt","./vendor/NOTICE.txt"];
 const assets=new Set(FILES.map(p=>new URL(p,self.registration.scope).href));

@@ -1,0 +1,36 @@
+/* 与随身练习的复盘面板沿用相同字号、颜色和按钮形状。 */
+.coach-heading, .coach-actions, .coach-citations, .coach-modes {
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:8px;
+}
+.coach-heading {justify-content:space-between}
+.coach-heading h2 {margin:0}
+.coach-hint, .phone-coach [role="status"] {color:#4b6279;line-height:1.6;font-size:.9rem}
+.coach-hint {margin:.65rem 0 1rem}
+.phone-coach [role="status"]:empty, .coach-settings [role="alert"]:empty {display:none}
+.coach-modes {margin-bottom:1rem;gap:6px}
+.coach-modes button {flex:1 1 auto}
+.coach-modes button[aria-pressed="true"] {background:#e7f0f8;border-color:#4278a2;color:#143a60}
+.phone-coach button, .coach-settings button, .coach-settings select {min-height:48px}
+.coach-question, .coach-settings label {display:grid;gap:5px;font-size:.93rem;font-weight:600}
+.coach-question {margin-bottom:10px}
+.phone-coach textarea, .coach-settings input[type="password"], .coach-settings select {
+  width:100%;min-width:0;min-height:46px;padding:10px;
+  font:inherit;font-size:1rem;border:1px solid #98b1c9;border-radius:8px;background:white;color:#142f49;
+}
+.phone-coach textarea {resize:vertical}
+.phone-coach textarea:focus-visible {outline:3px solid #3689cc;outline-offset:3px}
+.coach-answer {padding:0 0 1rem;margin:0 0 1rem;border-bottom:1px solid #d4dfeb}
+.coach-answer h3 {margin:.7rem 0;font-size:1rem}
+.coach-answer h3, .coach-prose {overflow-wrap:anywhere}
+.coach-prose {margin:0 0 .5rem;line-height:1.75;white-space:pre-wrap}
+.coach-citations {margin-top:.6rem}
+.coach-citations button {font-size:.88rem}
+.phone-coach .coach-error, .coach-settings .coach-error {color:#9c273a;line-height:1.6}
+.coach-settings {width:min(92vw,460px);max-height:90vh;overflow-y:auto}
+.coach-settings form {display:grid;gap:12px}
+.coach-settings h2, .coach-settings p {margin:0}
+.coach-settings .coach-remember {display:flex;align-items:center;gap:8px;min-height:44px}
+.coach-remember input {width:20px;height:20px;accent-color:#165b91}
