@@ -1,4 +1,5 @@
 import {evidenceAt} from "./assessment.js";
+import {mountCoachAvatar} from "./coach-avatar.js";
 
 const services = {
   deepseek: {name:"DeepSeek", url:"https://api.deepseek.com/chat/completions", models:["deepseek-flash","deepseek-v4-pro"]},
@@ -223,7 +224,10 @@ export function mountCoach(host,{assessment,studentPose,referencePose,onOpen,see
         <span>AI 动作教练</span><h2 id="coach-entry-title">跃教练</h2>
         <button type="button" id="open-coach" aria-haspopup="dialog" aria-controls="coach-dialog">打开教练 <span aria-hidden="true">↗</span></button>
       </div>
-      <img class="coach-entry-portrait" src="./coach-yue.webp" alt="" width="420" height="420">
+      <button type="button" id="open-coach-avatar" aria-haspopup="dialog" aria-controls="coach-avatar-dialog" aria-label="查看跃教练 3D 形象">
+        <img class="coach-entry-portrait" src="./coach-yue.webp" alt="" width="420" height="420">
+        <span>3D 形象</span>
+      </button>
     </div>
     <dialog id="coach-dialog" class="phone-coach" aria-labelledby="coach-room-title">
       <header class="coach-heading">
@@ -248,6 +252,7 @@ export function mountCoach(host,{assessment,studentPose,referencePose,onOpen,see
         <div class="coach-actions"><button type="button" data-cancel hidden>取消请求</button><button type="button" data-retry hidden>重试保存</button><button type="button" class="primary" data-generate></button></div>
       </div>
     </dialog>`;
+  const closeAvatar=mountCoachAvatar(host,{onOpen,signal:events.signal});
   const room=host.querySelector("#coach-dialog");
   const $=selector=>room.querySelector(selector);
   const area=$("[data-result]"),modes=$(".coach-modes"),scroll=$(".coach-scroll");
@@ -410,5 +415,5 @@ export function mountCoach(host,{assessment,studentPose,referencePose,onOpen,see
   });
   render();
   // 打开其他学生或离开本页时中断未完成的请求，上一份回答不会覆盖新学生。
-  return {close(){events.abort();pending?.abort();if(room.open)room.close();}};
+  return {close(){events.abort();pending?.abort();closeAvatar();if(room.open)room.close();}};
 }

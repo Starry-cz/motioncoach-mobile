@@ -1,12 +1,15 @@
-const VERSION="1.3.4";
+const VERSION="1.3.5";
 const CACHE="motioncoach-pocket-"+VERSION;
 const MODEL_EDITION="mediapipe-0.10.21-pose-lite-1";
 // 这些版本使用相同的 MediaPipe 运行库与 Pose Landmarker Lite 模型，可直接复用下载结果。
 const REUSABLE=["motioncoach-pocket-1.2.1","motioncoach-pocket-1.2.0","motioncoach-pocket-1.1.1-1","motioncoach-pocket-1.1.0-1"];
-const FILES=["./","./index.html","./app.js","./style.css","./manifest.webmanifest","./icon-180.png","./icon-192.png","./icon-512.png",
-  "./assessment.js","./pose.js","./replay.js","./pdf.js","./library.js","./account.js","./profile.js","./coach.js","./coach.css","./coach-yue.webp","./training.js","./training.css","./vendor/vision_bundle.mjs","./vendor/pose_landmarker_lite.task",
+const MODEL_FILES=["./vendor/vision_bundle.mjs","./vendor/pose_landmarker_lite.task",
   "./vendor/wasm/vision_wasm_internal.js","./vendor/wasm/vision_wasm_internal.wasm","./vendor/wasm/vision_wasm_nosimd_internal.js",
   "./vendor/wasm/vision_wasm_nosimd_internal.wasm","./vendor/LICENSE-mediapipe.txt","./vendor/NOTICE.txt"];
+const FILES=["./","./index.html","./app.js","./style.css","./manifest.webmanifest","./icon-180.png","./icon-192.png","./icon-512.png",
+  "./assessment.js","./pose.js","./replay.js","./pdf.js","./library.js","./account.js","./profile.js","./coach.js","./coach.css","./coach-yue.webp",
+  "./coach-avatar.js","./coach-viewer.js","./coach-yue-3d.glb","./coach-yue-poster.webp","./vendor/coach-three.mjs","./vendor/LICENSE-coach-three.txt",
+  "./training.js","./training.css",...MODEL_FILES];
 const assets=new Set(FILES.map(p=>new URL(p,self.registration.scope).href));
 const modelMarker=new URL("./.offline-model",self.registration.scope).href;
 
@@ -28,7 +31,7 @@ self.addEventListener("install",event=>{
     const toDownload=[];
     for(const path of FILES) {
       const request=new Request(new URL(path,self.registration.scope),{cache:"reload"});
-      const asset=path.startsWith("./vendor/") && installed ? await installed.match(request) : null;
+      const asset=MODEL_FILES.includes(path) && installed ? await installed.match(request) : null;
       if(asset) await cache.put(request,asset);
       else toDownload.push(request);
     }
