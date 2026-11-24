@@ -9,4 +9,6 @@
 
 [查看或保存双端二维码安装图](https://starry-cz.github.io/motioncoach-mobile/install-guide.png)
 
+如果安装网页暂时打不开，安卓用户也可以[直接从本仓库下载同一份签名 APK](https://github.com/Starry-cz/motioncoach-mobile/raw/refs/heads/main/motioncoach-android.apk)。
+
 视频和练习记录保存在使用者的设备上。从旧网址迁来的 iPhone 用户可在原入口查看之前的记录。
