@@ -1,74 +1,16 @@
 import {
-  AmbientLight, BackSide, Box3, CanvasTexture, CircleGeometry, DataTexture, DirectionalLight,
-  Group, Mesh, MeshBasicMaterial, MeshToonMaterial, NearestFilter, OrthographicCamera,
-  RedFormat, Scene, Vector3, WebGLRenderer, GLTFLoader,
+  AmbientLight, Box3, CanvasTexture, CircleGeometry, DirectionalLight,
+  Group, Mesh, MeshBasicMaterial, OrthographicCamera, Scene, Vector3, WebGLRenderer, GLTFLoader,
 } from "./vendor/coach-three.mjs";
 
-const outlinedSurfaces=new Set(["hair","hair_lock","hair_deep","jacket","pants","shoe","sole"]);
-
-function collectTextures(material,textures) {
-  for(const value of Object.values(material))if(value?.isTexture)textures.add(value);
-}
-
-function releaseTextures(textures,retained=new Set()) {
-  const images=new Set(),retainedImages=new Set(Array.from(retained,texture=>texture.image));
+function releaseTextures(textures) {
+  const images=new Set();
   for(const texture of textures){
-    if(retained.has(texture))continue;
-    if(texture.image?.close && !retainedImages.has(texture.image))images.add(texture.image);
+    if(texture.image?.close)images.add(texture.image);
     texture.dispose();
   }
   // glTF 加载器可能在多个贴图对象之间共享同一张 ImageBitmap。
   for(const image of images)image.close();
-}
-
-function applyCelShading(model,height) {
-  // 用四档亮度保留动画式的明暗边界，眼线、眼睛高光和纸上细节沿用原色。
-  const ramp=new DataTexture(new Uint8Array([110,110,110,110,162,162,209,255]),8,1,RedFormat);
-  ramp.minFilter=ramp.magFilter=NearestFilter;
-  ramp.needsUpdate=true;
-  const shaded=new Map(),meshes=[],originalTextures=new Set(),renderedTextures=new Set();
-  model.traverse(mesh=>{if(mesh.isMesh)meshes.push(mesh);});
-  const contour=new MeshBasicMaterial({color:0x262536,side:BackSide,toneMapped:false});
-  const width=(height*.00145).toFixed(6);
-  contour.onBeforeCompile=shader=>{
-    // 只沿原网格的法线轻微外扩背面，轮廓共享原几何数据。
-    shader.vertexShader=shader.vertexShader.replace("#include <begin_vertex>",
-      `vec3 transformed = vec3(position) + normalize(normal) * ${width};`);
-  };
-  function shade(source) {
-    if(source.isMeshBasicMaterial){
-      collectTextures(source,renderedTextures);
-      return source;
-    }
-    if(!shaded.has(source)){
-      const properties={
-        name:source.name,color:source.color,map:source.map,alphaMap:source.alphaMap,
-        alphaTest:source.alphaTest,side:source.side,transparent:source.transparent,
-        opacity:source.opacity,depthWrite:source.depthWrite,vertexColors:source.vertexColors,
-        toneMapped:false,
-      };
-      const material=new MeshToonMaterial({...properties,gradientMap:ramp});
-      collectTextures(source,originalTextures);
-      collectTextures(material,renderedTextures);
-      shaded.set(source,material);
-    }
-    return shaded.get(source);
-  }
-  let hasContour=false;
-  for(const mesh of meshes){
-    if(Array.isArray(mesh.material)){
-      mesh.material=mesh.material.map(shade);
-    }else{
-      if(!mesh.isSkinnedMesh && outlinedSurfaces.has(mesh.material.name)){
-        mesh.add(new Mesh(mesh.geometry,contour));
-        hasContour=true;
-      }
-      mesh.material=shade(mesh.material);
-    }
-  }
-  if(!hasContour)contour.dispose();
-  releaseTextures(originalTextures,renderedTextures);
-  for(const source of shaded.keys())source.dispose();
 }
 
 function releaseMeshes(root) {
@@ -79,7 +21,7 @@ function releaseMeshes(root) {
     for(const material of [].concat(node.material))materials.add(material);
   });
   for(const material of materials) {
-    collectTextures(material,textures);
+    for(const value of Object.values(material))if(value?.isTexture)textures.add(value);
     material.dispose();
   }
   releaseTextures(textures);
@@ -105,6 +47,22 @@ function floorShadow(width) {
   return shadow;
 }
 
+function turningDiameter(model,center) {
+  // 用真实顶点找转身时的最宽轮廓。宽马尾和手臂分居两侧，外接盒对角线会把小人缩得过小。
+  const point=new Vector3();
+  let radiusSquared=0;
+  model.traverse(mesh=>{
+    if(!mesh.isMesh)return;
+    const positions=mesh.geometry.attributes.position;
+    for(let i=0;i<positions.count;i++){
+      point.fromBufferAttribute(positions,i).applyMatrix4(mesh.matrixWorld);
+      const x=point.x-center.x,z=point.z-center.z;
+      radiusSquared=Math.max(radiusSquared,x*x+z*z);
+    }
+  });
+  return 2*Math.sqrt(radiusSquared);
+}
+
 export async function mountCoachViewer({canvas,src,signal}) {
   const response=await fetch(src,{signal});
   if(!response.ok)throw Error("暂时无法加载 3D 形象。");
@@ -124,19 +82,24 @@ export async function mountCoachViewer({canvas,src,signal}) {
 
   // glTF 按 Y 轴向上、Z 轴向前。以脚底为轴心让角色转身，保持绘制范围随屏幕宽高变化。
   const box=new Box3().setFromObject(model),size=box.getSize(new Vector3()),center=box.getCenter(new Vector3());
-  applyCelShading(model,size.y);
+  const diameter=turningDiameter(model,center);
   model.position.sub(new Vector3(center.x,box.min.y,center.z));
   const turntable=new Group();
   turntable.add(model);
   const scene=new Scene();
-  const diameter=Math.hypot(size.x,size.z);
-  scene.add(turntable,floorShadow(diameter),new AmbientLight(0xeef3ff,1.13));
-  const key=new DirectionalLight(0xfff6ed,2.63);
+  // 保留模型的哑光质感。正前方的反光让大头小人的下巴和深色眼睛在手机上也能看清。
+  scene.add(turntable,floorShadow(diameter),new AmbientLight(0xfffaf6,1.42));
+  const key=new DirectionalLight(0xfff4eb,1.87);
   key.position.set(-3,4,5);
-  scene.add(key);
+  const bounce=new DirectionalLight(0xffece6,.68);
+  bounce.position.set(1,-3,5);
+  const rim=new DirectionalLight(0xe6edff,1.35);
+  rim.position.set(3,3,-4);
+  scene.add(key,bounce,rim);
   const camera=new OrthographicCamera(-1,1,1,-1,.05,size.y*8);
-  camera.position.set(0,size.y*.76,size.y*2.9);
-  camera.lookAt(0,size.y*.48,0);
+  // 接近平视的正交镜头略偏向一侧，同时能读到眼神、发结和外套的体积。
+  camera.position.set(-size.y*.68,size.y*.82,size.y*2.85);
+  camera.lookAt(0,size.y*.5,0);
 
   const events=new AbortController();
   let gesture=null,angle=0,frame=0,lastWidth=0,lastHeight=0;
@@ -149,7 +112,7 @@ export async function mountCoachViewer({canvas,src,signal}) {
       // 转身只更新角度，不在每一帧重新分配画布缓冲区。
       if(clientWidth!==lastWidth || clientHeight!==lastHeight) {
         const aspect=clientWidth/clientHeight;
-        const height=Math.max(size.y*1.19,diameter*1.25/aspect);
+        const height=Math.max(size.y*1.15,diameter*1.13/aspect);
         camera.top=height/2;
         camera.bottom=-height/2;
         camera.right=height*aspect/2;
