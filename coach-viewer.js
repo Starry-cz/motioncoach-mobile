@@ -1,8 +1,75 @@
 import {
-  Box3, CanvasTexture, CircleGeometry, DirectionalLight, Group, HemisphereLight, Mesh,
-  MeshBasicMaterial, NeutralToneMapping, OrthographicCamera, Scene, Vector3, WebGLRenderer,
-  GLTFLoader,
+  AmbientLight, BackSide, Box3, CanvasTexture, CircleGeometry, DataTexture, DirectionalLight,
+  Group, Mesh, MeshBasicMaterial, MeshToonMaterial, NearestFilter, OrthographicCamera,
+  RedFormat, Scene, Vector3, WebGLRenderer, GLTFLoader,
 } from "./vendor/coach-three.mjs";
+
+const outlinedSurfaces=new Set(["hair","hair_lock","hair_deep","jacket","pants","shoe","sole"]);
+
+function collectTextures(material,textures) {
+  for(const value of Object.values(material))if(value?.isTexture)textures.add(value);
+}
+
+function releaseTextures(textures,retained=new Set()) {
+  const images=new Set(),retainedImages=new Set(Array.from(retained,texture=>texture.image));
+  for(const texture of textures){
+    if(retained.has(texture))continue;
+    if(texture.image?.close && !retainedImages.has(texture.image))images.add(texture.image);
+    texture.dispose();
+  }
+  // glTF 加载器可能在多个贴图对象之间共享同一张 ImageBitmap。
+  for(const image of images)image.close();
+}
+
+function applyCelShading(model,height) {
+  // 用四档亮度保留动画式的明暗边界，眼线、眼睛高光和纸上细节沿用原色。
+  const ramp=new DataTexture(new Uint8Array([110,110,110,110,162,162,209,255]),8,1,RedFormat);
+  ramp.minFilter=ramp.magFilter=NearestFilter;
+  ramp.needsUpdate=true;
+  const shaded=new Map(),meshes=[],originalTextures=new Set(),renderedTextures=new Set();
+  model.traverse(mesh=>{if(mesh.isMesh)meshes.push(mesh);});
+  const contour=new MeshBasicMaterial({color:0x262536,side:BackSide,toneMapped:false});
+  const width=(height*.00145).toFixed(6);
+  contour.onBeforeCompile=shader=>{
+    // 只沿原网格的法线轻微外扩背面，轮廓共享原几何数据。
+    shader.vertexShader=shader.vertexShader.replace("#include <begin_vertex>",
+      `vec3 transformed = vec3(position) + normalize(normal) * ${width};`);
+  };
+  function shade(source) {
+    if(source.isMeshBasicMaterial){
+      collectTextures(source,renderedTextures);
+      return source;
+    }
+    if(!shaded.has(source)){
+      const properties={
+        name:source.name,color:source.color,map:source.map,alphaMap:source.alphaMap,
+        alphaTest:source.alphaTest,side:source.side,transparent:source.transparent,
+        opacity:source.opacity,depthWrite:source.depthWrite,vertexColors:source.vertexColors,
+        toneMapped:false,
+      };
+      const material=new MeshToonMaterial({...properties,gradientMap:ramp});
+      collectTextures(source,originalTextures);
+      collectTextures(material,renderedTextures);
+      shaded.set(source,material);
+    }
+    return shaded.get(source);
+  }
+  let hasContour=false;
+  for(const mesh of meshes){
+    if(Array.isArray(mesh.material)){
+      mesh.material=mesh.material.map(shade);
+    }else{
+      if(!mesh.isSkinnedMesh && outlinedSurfaces.has(mesh.material.name)){
+        mesh.add(new Mesh(mesh.geometry,contour));
+        hasContour=true;
+      }
+      mesh.material=shade(mesh.material);
+    }
+  }
+  if(!hasContour)contour.dispose();
+  releaseTextures(originalTextures,renderedTextures);
+  for(const source of shaded.keys())source.dispose();
+}
 
 function releaseMeshes(root) {
   const geometries=new Set(),materials=new Set(),textures=new Set();
@@ -12,10 +79,10 @@ function releaseMeshes(root) {
     for(const material of [].concat(node.material))materials.add(material);
   });
   for(const material of materials) {
-    for(const value of Object.values(material))if(value?.isTexture)textures.add(value);
+    collectTextures(material,textures);
     material.dispose();
   }
-  for(const texture of textures)texture.dispose();
+  releaseTextures(textures);
   for(const geometry of geometries)geometry.dispose();
 }
 
@@ -53,26 +120,20 @@ export async function mountCoachViewer({canvas,src,signal}) {
     throw Error("当前设备暂时无法显示 3D 形象。");
   }
   const renderer=new WebGLRenderer({canvas,context,alpha:true,antialias:true});
-  renderer.toneMapping=NeutralToneMapping;
-  renderer.toneMappingExposure=1.1;
   renderer.setPixelRatio(Math.min(devicePixelRatio,2));
 
   // glTF 按 Y 轴向上、Z 轴向前。以脚底为轴心让角色转身，保持绘制范围随屏幕宽高变化。
   const box=new Box3().setFromObject(model),size=box.getSize(new Vector3()),center=box.getCenter(new Vector3());
+  applyCelShading(model,size.y);
   model.position.sub(new Vector3(center.x,box.min.y,center.z));
   const turntable=new Group();
   turntable.add(model);
   const scene=new Scene();
   const diameter=Math.hypot(size.x,size.z);
-  scene.add(turntable,floorShadow(diameter),new HemisphereLight(0xf8faff,0xc2ccdc,1.4));
-  const key=new DirectionalLight(0xfff6ec,2.1);
-  key.position.set(-3,5,4);
-  // 正面补光让眼睛和深蓝运动服在手机上也清楚，保留模型材质本身的颜色。
-  const fill=new DirectionalLight(0xffffff,1.2);
-  fill.position.set(3,2,5);
-  const rim=new DirectionalLight(0xe0ecff,1.35);
-  rim.position.set(2,4,-3);
-  scene.add(key,fill,rim);
+  scene.add(turntable,floorShadow(diameter),new AmbientLight(0xeef3ff,1.13));
+  const key=new DirectionalLight(0xfff6ed,2.63);
+  key.position.set(-3,4,5);
+  scene.add(key);
   const camera=new OrthographicCamera(-1,1,1,-1,.05,size.y*8);
   camera.position.set(0,size.y*.76,size.y*2.9);
   camera.lookAt(0,size.y*.48,0);
