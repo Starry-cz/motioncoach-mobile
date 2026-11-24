@@ -1,11 +1,11 @@
 {
   "android": {
-    "version": "1.2.2",
-    "code": 8,
-    "apk": "motioncoach-android.apk?v=1.2.2",
+    "version": "1.2.3",
+    "code": 9,
+    "apk": "motioncoach-android.apk?v=1.2.3",
     "bytes": 11426178
   },
   "web": {
-    "version": "1.2.2"
+    "version": "1.2.3"
   }
 }

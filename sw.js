@@ -1,4 +1,4 @@
-const VERSION="1.2.2";
+const VERSION="1.2.3";
 const CACHE="motioncoach-pocket-"+VERSION;
 const MODEL_EDITION="mediapipe-0.10.21-pose-lite-1";
 // 这些版本使用相同的 MediaPipe 运行库与 Pose Landmarker Lite 模型，可直接复用下载结果。
@@ -35,11 +35,15 @@ self.addEventListener("install",event=>{
     await cache.addAll(toDownload);
     // 发布边缘节点可能先到达新版脚本，确认已拿到同版首页后再接管页面。
     const home=await cache.match(new URL("./",self.registration.scope));
-    if(!(await home.text()).includes('data-release="'+VERSION+'"'))throw Error("首页版本尚未同步");
+    if(!home || !(await home.text()).includes('data-release="'+VERSION+'"'))throw Error("首页版本尚未同步");
     // 后续版本只需更新 VERSION。模型或推理运行库变更时同步改 MODEL_EDITION。
     await cache.put(modelMarker,new Response(MODEL_EDITION));
     await self.skipWaiting();
-  })());
+  })().catch(async error=>{
+    // 发布过程中下载到旧首页时，只清理这次未激活的缓存，保留使用中的旧版。
+    await caches.delete(CACHE);
+    throw error;
+  }));
 });
 self.addEventListener("activate",event=>event.waitUntil((async()=>{
   // 先接管页面再移除旧缓存，让离线重开不会撞上切换时的空窗。
