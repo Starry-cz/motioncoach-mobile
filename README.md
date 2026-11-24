@@ -9,7 +9,7 @@
 
 [查看或保存双端二维码安装图](https://starry-cz.github.io/motioncoach-mobile/install-guide.png)
 
-安卓安装后从桌面的「动作研习室」图标打开。界面和姿态模型都在 APK 内，App 使用系统 WebView 运行它们。如果旧版停在「需要更新系统 WebView」，请用 1.1.1 或更新的 APK 覆盖安装。若仍出现「启动诊断」，可按屏幕显示的具体原因和组件版本处理。
+安卓安装后从桌面的「动作研习室」图标打开。1.1.2 从 APK 直接读取首页。如果旧版显示「网页无法打开」或「需要更新系统 WebView」，请覆盖安装 1.1.2。若出现「启动诊断」，可按屏幕显示的具体原因和组件版本处理。
 
 如果安装网页暂时打不开，安卓用户也可以[直接从本仓库下载同一份签名 APK](https://github.com/Starry-cz/motioncoach-mobile/raw/refs/heads/main/motioncoach-android.apk)。
 
