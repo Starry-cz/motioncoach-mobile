@@ -7,6 +7,14 @@ function decode(text) {
   return Uint8Array.from(atob(value),char=>char.charCodeAt(0));
 }
 
+export function accountPasswordBytes(password) {
+  // 发布工具和手机端按同一规则把可打印的短口令补齐为 AES-128 密钥。
+  if(!/^[!-~]{1,16}$/.test(password))return null;
+  const bytes=new Uint8Array(16);
+  bytes.set(new TextEncoder().encode(password));
+  return bytes;
+}
+
 async function openSealed(key,additionalData,verifier) {
   const payload=decode(verifier);
   const plain=await crypto.subtle.decrypt({
@@ -83,9 +91,10 @@ export function mountAccount({onLogin}={}) {
       return;
     }
     let key=null;
-    if(user===username && /^[A-Za-z0-9_-]{21}[AQgw]$/.test(password)) {
+    const passwordBytes=user===username?accountPasswordBytes(password):null;
+    if(passwordBytes) {
       try {
-        const candidate=await crypto.subtle.importKey("raw",decode(password),"AES-GCM",false,["decrypt"]);
+        const candidate=await crypto.subtle.importKey("raw",passwordBytes,"AES-GCM",false,["decrypt"]);
         if(await openSealed(candidate,username,verifier)===marker)key=candidate;
       } catch { /* 口令不匹配时认证解密会失败。 */ }
     }

@@ -1,4 +1,4 @@
-const VERSION="1.3.0";
+const VERSION="1.3.1";
 const CACHE="motioncoach-pocket-"+VERSION;
 const MODEL_EDITION="mediapipe-0.10.21-pose-lite-1";
 // 这些版本使用相同的 MediaPipe 运行库与 Pose Landmarker Lite 模型，可直接复用下载结果。
