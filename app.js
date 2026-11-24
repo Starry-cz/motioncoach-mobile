@@ -28,7 +28,9 @@ function show(id,nav) {
 }
 // 退出后结束当前复盘和未完成操作，设备里的练习与模型设置继续保留。
 window.addEventListener("motioncoach-account",({detail})=>{
-  $("#ai-settings").hidden=!detail.unlocked;
+  // 登录前也能从设置更新程序，账号和 AI 配置仅在登录后显示。
+  $("#ai-settings").hidden=false;
+  for(const row of document.querySelectorAll("#settings-dialog [data-requires-account]"))row.hidden=!detail.unlocked;
   if(!detail.unlocked) {
     run?.abort();
     provisionDefaultDeepSeek(null);
@@ -46,7 +48,7 @@ function filesChanged() {
 }
 function busy(value) {
   $("#progress-area").hidden=!value;
-  for(const id of ["ref-file","stu-files","work","records","standards-nav","training-nav","choose-standard","check-update","ai-settings"]) $("#"+id).disabled=value;
+  for(const id of ["ref-file","stu-files","work","records","standards-nav","training-nav","choose-standard","ai-settings"]) $("#"+id).disabled=value;
   filesChanged();
 }
 async function analyze() {
@@ -262,15 +264,13 @@ $("#work").onclick=()=>show("form","work");$("#records").onclick=history;
 $("#standards-nav").onclick=standardsPage;$("#choose-standard").onclick=standardsPage;
 $("#training-nav").onclick=()=>{show("training","training-nav");training=mountTraining($("#training"),{openReview:open});};
 const settingsDialog=$("#settings-dialog");
-const account=mountAccount({onLogin:({coachKey})=>provisionDefaultDeepSeek(coachKey)});
-$("#ai-settings").hidden=!account.isUnlocked();
+mountAccount({onLogin:({coachKey})=>provisionDefaultDeepSeek(coachKey)});
 $("#ai-settings").onclick=()=>{
   $("#settings-ai-label").textContent=coachServiceLabel();
   settingsDialog.showModal();
 };
 $("#close-settings").onclick=()=>settingsDialog.close();
 $("#open-service-settings").onclick=()=>{settingsDialog.close();openCoachSettings();};
-$("#settings-update").onclick=()=>{settingsDialog.close();$("#check-update").click();};
 $("#add-standard").onchange=async e=>{
   const input=e.currentTarget,file=input.files[0];if(!file)return;input.disabled=true;
   try{await addStandard(file);if(!$("#standards").hidden)await standardsPage();}catch(err){notice(err.message);}
@@ -287,6 +287,7 @@ if(/Android/i.test(navigator.userAgent) && !window.MotionCoachAndroid){
 
 const updateDialog=$("#update-dialog"), updateButton=$("#apply-update");
 const appVersion=document.documentElement.dataset.release;
+$("#settings-version").textContent=appVersion;
 let updatePending=false;
 
 function versionOrder(left,right) {
@@ -371,8 +372,9 @@ async function checkWebUpdate() {
   }
 }
 
-$("#check-update").onclick=()=>{
+$("#settings-update").onclick=()=>{
   if(run)return;
+  settingsDialog.close();
   if(window.MotionCoachAndroid) {
     window.MotionCoachAndroid.checkUpdate();
     return;

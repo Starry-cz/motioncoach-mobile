@@ -1,11 +1,11 @@
 <!doctype html>
-<html lang="zh-CN" data-release="1.3.1" data-account-user="admin" data-account-verifier="CRwoBdTBifYqJkB6Mzo1crIr94TNeRl0wfpgtvwVOJTdSdIhLb2aaKW2KslScwc2ENz1Og_h" data-default-coach="ih0PWQoXv2tppM0ph_ejmMf3nNvmbOacqN0QYmkCx8uE1mA-Dtyt2ACZ1CbiaoNrq0hS1A6tR8JENwKnjfyX"><head>
+<html lang="zh-CN" data-release="1.3.2" data-account-user="admin" data-account-verifier="CRwoBdTBifYqJkB6Mzo1crIr94TNeRl0wfpgtvwVOJTdSdIhLb2aaKW2KslScwc2ENz1Og_h" data-default-coach="ih0PWQoXv2tppM0ph_ejmMf3nNvmbOacqN0QYmkCx8uE1mA-Dtyt2ACZ1CbiaoNrq0hS1A6tR8JENwKnjfyX"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#102a45"><meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="动作研习室"><title>动作研习室 · 随身练习</title>
 <link rel="apple-touch-icon" href="./icon-180.png"><link rel="icon" href="./icon-192.png">
 <link rel="manifest" href="./manifest.webmanifest"><link rel="stylesheet" href="./style.css"><link rel="stylesheet" href="./coach.css"><link rel="stylesheet" href="./training.css">
-</head><body><header class="app-header"><div class="app-bar"><div class="brand"><img src="./icon-180.png" width="32" height="32" alt=""><strong>动作研习室</strong></div><div class="header-actions"><button id="ai-settings" class="quiet" hidden>设置</button><button id="install" class="quiet">安装</button><a id="android-apk" class="apk-link" href="./motioncoach-android.apk" download="动作研习室-Android.apk" hidden>安卓安装</a></div></div></header>
+</head><body><header class="app-header"><div class="app-bar"><div class="brand"><img src="./icon-180.png" width="32" height="32" alt=""><strong>动作研习室</strong></div><div class="header-actions"><button id="ai-settings" class="quiet" aria-haspopup="dialog" hidden>设置</button><button id="install" class="quiet">安装</button><a id="android-apk" class="apk-link" href="./motioncoach-android.apk" download="动作研习室-Android.apk" hidden>安卓安装</a></div></div></header>
 <section id="account-gate" class="account-gate" aria-labelledby="login-title" hidden>
   <form id="login-form">
     <h1 id="login-title">登录</h1>
@@ -29,13 +29,12 @@
 <p id="notice" role="alert"></p>
 </section>
 </main>
-<footer><span>动作研习室 · 1.3.1</span><button type="button" id="check-update" class="quiet">检查更新</button></footer>
 <dialog id="settings-dialog" class="settings-dialog" aria-labelledby="settings-title">
   <div class="section-head"><h2 id="settings-title">设置中心</h2><button type="button" id="close-settings">关闭</button></div>
   <section class="settings-list" aria-label="应用设置">
-    <div><span><strong>登录账号</strong><small id="account-name"></small></span><button type="button" id="logout">退出登录</button></div>
-    <div><span><strong>AI 服务</strong><small id="settings-ai-label"></small></span><button type="button" id="open-service-settings">AI 接口设置</button></div>
-    <div><span><strong>软件版本</strong><small>1.3.1</small></span><button type="button" id="settings-update">检查更新</button></div>
+    <div data-requires-account hidden><span><strong>登录账号</strong><small id="account-name"></small></span><button type="button" id="logout">退出登录</button></div>
+    <div data-requires-account hidden><span><strong>AI 服务</strong><small id="settings-ai-label"></small></span><button type="button" id="open-service-settings">AI 接口设置</button></div>
+    <div><span><strong>软件版本</strong><small id="settings-version"></small></span><button type="button" id="settings-update">检查更新</button></div>
   </section>
 </dialog>
 <dialog id="install-dialog"><h2>安装到 iPhone</h2><ol><li>在 Safari 点「分享」→「添加到主屏幕」。</li><li>从桌面图标打开，等待显示「离线可用」。</li></ol><button id="close-install" class="primary">完成</button></dialog>

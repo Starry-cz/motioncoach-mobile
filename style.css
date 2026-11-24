@@ -180,9 +180,6 @@ progress { width:100%; accent-color:#1b659d; }
 #ai-coach { scroll-margin-top:12px; }
 #notice { color:#9e203a; line-height:1.5; }
 .download { display:inline-flex; align-items:center; min-height:44px; padding:0 10px; }
-footer { display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;
-  margin-top:20px; padding:10px 0; border-top:1px solid var(--rule); color:var(--muted); font-size:.82rem; }
-#check-update { font-size:.84rem; color:var(--blue); }
 dialog { max-width:min(92vw,440px); border:1px solid var(--rule); border-radius:14px; padding:18px; color:inherit; }
 dialog li { line-height:1.6; }
 dialog::backdrop { background:#102c4790; }
@@ -249,4 +246,3 @@ dialog::backdrop { background:#102c4790; }
 .class-table td small { display:block; margin-top:3px; }
 .class-parts { display:flex; flex-wrap:wrap; gap:4px 10px; font-size:.85rem; }
 .review-evidence { border-top:1px solid var(--rule); padding-top:13px; }
-footer { width:min(calc(100% - 28px),1008px); margin-inline:auto; }
