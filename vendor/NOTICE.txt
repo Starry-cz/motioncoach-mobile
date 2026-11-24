@@ -1,0 +1,12 @@
+动作研习室 iPhone 网页版使用以下未经修改的第三方发布文件。
+
+Google LLC，MediaPipe Tasks Vision 0.10.21（JavaScript、WebAssembly）
+来源 https://registry.npmjs.org/@mediapipe/tasks-vision/-/tasks-vision-0.10.21.tgz
+项目 https://github.com/google-ai-edge/mediapipe
+
+Google LLC，MediaPipe Pose Landmarker Lite，float16，第 1 版
+来源 https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task
+官方指南 https://developers.google.com/edge/mediapipe/solutions/vision/pose_landmarker
+指南所列模型卡 https://huggingface.co/litert-community/MediaPipe-PoseLandmarker-Lite
+
+上述软件与模型采用 Apache License 2.0，许可正文随附于 LICENSE-mediapipe.txt。
