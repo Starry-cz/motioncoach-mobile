@@ -180,11 +180,15 @@ progress { width:100%; accent-color:#1b659d; }
 #ai-coach { scroll-margin-top:12px; }
 #notice { color:#9e203a; line-height:1.5; }
 .download { display:inline-flex; align-items:center; min-height:44px; padding:0 10px; }
-footer { margin-top:20px; padding:10px 0; border-top:1px solid var(--rule); color:var(--muted); font-size:.76rem; }
-footer span { margin:0 3px; }
+footer { display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;
+  margin-top:20px; padding:10px 0; border-top:1px solid var(--rule); color:var(--muted); font-size:.82rem; }
+#check-update { font-size:.84rem; color:var(--blue); }
 dialog { max-width:min(92vw,440px); border:1px solid var(--rule); border-radius:14px; padding:18px; color:inherit; }
 dialog li { line-height:1.6; }
 dialog::backdrop { background:#102c4790; }
+#update-dialog { width:min(92vw,375px); }
+#update-status { line-height:1.55; margin:0 0 14px; }
+.update-actions { display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; }
 @media(min-width:740px) {
   main,.app-bar { padding-left:max(26px,env(safe-area-inset-left)); padding-right:max(26px,env(safe-area-inset-right)); }
   .review-player { padding:14px; }

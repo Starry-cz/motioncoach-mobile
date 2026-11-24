@@ -35,7 +35,7 @@ function filesChanged() {
 }
 function busy(value) {
   $("#progress-area").hidden=!value;
-  for(const id of ["ref-file","stu-files","work","records","standards-nav","training-nav","choose-standard"]) $("#"+id).disabled=value;
+  for(const id of ["ref-file","stu-files","work","records","standards-nav","training-nav","choose-standard","check-update"]) $("#"+id).disabled=value;
   filesChanged();
 }
 async function analyze() {
@@ -241,6 +241,104 @@ if(/Android/i.test(navigator.userAgent) && !window.MotionCoachAndroid){
   $("#install").hidden=true;
   $("#android-apk").hidden=false;
 }
+
+const updateDialog=$("#update-dialog"), updateButton=$("#apply-update");
+const appVersion=document.documentElement.dataset.release;
+let updatePending=false;
+
+function versionOrder(left,right) {
+  const a=left.split(".").map(Number),b=right.split(".").map(Number);
+  for(let i=0;i<3;i++)if(a[i]!==b[i])return a[i]-b[i];
+  return 0;
+}
+
+function updateState(message,buttonText,action) {
+  $("#update-status").textContent=message;
+  updateButton.hidden=!action;
+  if(action)updateButton.textContent=buttonText;
+  updateButton.onclick=action || null;
+}
+
+async function workerRelease(worker) {
+  if(worker?.state!=="activated")return null;
+  const channel=new MessageChannel();
+  try {
+    return await new Promise(resolve=>{
+      const timeout=setTimeout(()=>resolve(null),700);
+      channel.port1.onmessage=event=>{clearTimeout(timeout);resolve(event.data);};
+      worker.postMessage({type:"version"},[channel.port2]);
+    });
+  } finally {channel.port1.close();}
+}
+
+async function waitForWebRelease(registration,version) {
+  const deadline=Date.now()+180000;
+  const discoveryLimit=Date.now()+6000;
+  let candidate;
+  while(Date.now()<deadline) {
+    const active=await workerRelease(navigator.serviceWorker.controller);
+    if(typeof active==="string" && /^\d+\.\d+\.\d+$/.test(active) && versionOrder(active,version)>=0)return;
+    candidate=registration.installing || registration.waiting || candidate;
+    if(candidate?.state==="redundant")throw Error("新版资源下载中断。请在网络稳定时重试。");
+    if(!candidate && Date.now()>discoveryLimit)throw Error("新版资源还在发布，请稍后重试。");
+    await new Promise(resolve=>setTimeout(resolve,500));
+  }
+  throw Error("新版资源仍在准备，请稍后回来重试。");
+}
+
+async function applyWebUpdate(version) {
+  if(updatePending || run)return;
+  updatePending=true;
+  updateState("正在准备 "+version+"，完成后会重新打开。");
+  try {
+    const registration=await navigator.serviceWorker.register("./sw.js",{updateViaCache:"none"});
+    await registration.update();
+    // 只由主动申请更新的页面重开，其他标签上的分析和编辑可继续。
+    await waitForWebRelease(registration,version);
+    const reopen=()=>{if(!run)location.replace(registration.scope);};
+    if(updateDialog.open && !run)reopen();
+    else updateState("新版已就绪。","打开新版",reopen);
+  } catch(error) {
+    updateState(error.message || "更新未完成，请重试。","重试更新",()=>applyWebUpdate(version));
+  } finally {updatePending=false;}
+}
+
+async function checkWebUpdate() {
+  if(updatePending)return;
+  if(!navigator.serviceWorker) {
+    updateState("请在 Safari 或从主屏幕打开后检查更新。");
+    return;
+  }
+  updatePending=true;
+  updateState("正在检查更新…");
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),15000);
+  try {
+    // 检查远端版本，离线缓存里只保留当前程序。
+    const response=await fetch("./mobile-release.json",{cache:"no-store",signal:controller.signal});
+    if(!response.ok)throw Error();
+    const {web}=await response.json();
+    if(typeof web?.version!=="string" || !/^\d{1,6}\.\d{1,6}\.\d{1,6}$/.test(web.version))throw Error();
+    if(versionOrder(web.version,appVersion)<=0)updateState("当前已是最新版 "+appVersion+"。");
+    else updateState("发现新版 "+web.version+"，更新后将重新打开。","更新到 "+web.version,()=>applyWebUpdate(web.version));
+  } catch {
+    updateState("暂时无法检查更新，请联网后重试。","重试",checkWebUpdate);
+  } finally {
+    clearTimeout(timeout);updatePending=false;
+  }
+}
+
+$("#check-update").onclick=()=>{
+  if(run)return;
+  if(window.MotionCoachAndroid) {
+    window.MotionCoachAndroid.checkUpdate();
+    return;
+  }
+  if(!updateDialog.open)updateDialog.showModal();
+  checkWebUpdate();
+};
+$("#close-update").onclick=()=>updateDialog.close();
+
 async function offline(){
   const label=$("#offline-state");
   // 安装包已经包含模型和网页，首次断网启动也能分析。
