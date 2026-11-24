@@ -73,8 +73,8 @@ export function mountTraining(host, {openReview}) {
     '<div data-drill hidden><label>训练片段<select data-range></select></label><video muted playsinline preload="metadata" aria-label="训练片段"></video>' +
     '<div class="toolbar"><button type="button" data-play>循环跟练</button><button type="button" data-check>完成一轮</button>' +
     '<button type="button" data-source>打开复盘</button></div><p data-record role="status"></p></div></section>' +
-    '<section class="panel"><h2>进步追踪</h2><p>上方录像作为起点。请选择同一位练习者使用同一示范的另一次录像。</p>' +
-    '<label>复练录像<select data-second></select></label><div data-trend aria-live="polite"></div></section></div>';
+    '<section class="panel"><h2>进步追踪</h2><label>复练录像 <small>同一位学生、同一份示范</small><select data-second></select></label>' +
+    '<div data-trend aria-live="polite"></div></section></div>';
   const find = selector => host.querySelector(selector);
   const form = find(".phone-training"), status = find("[data-status]"), drill = find("[data-drill]");
   const firstSelect = find("[data-first]"), secondSelect = find("[data-second]"), rangeSelect = find("[data-range]");

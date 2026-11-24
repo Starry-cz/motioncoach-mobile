@@ -5,10 +5,13 @@
   align-items:center;
   gap:8px;
 }
-.coach-heading {justify-content:space-between}
+.coach-heading {justify-content:space-between;margin-bottom:12px}
 .coach-heading h2 {margin:0}
-.coach-hint, .phone-coach [role="status"] {color:#4b6279;line-height:1.6;font-size:.9rem}
-.coach-hint {margin:.65rem 0 1rem}
+.coach-heading small, .coach-model, .coach-privacy, .phone-coach [role="status"] {
+  color:#4b6279;line-height:1.55;font-size:.84rem;
+}
+.coach-heading small {display:block;margin-top:3px}
+.coach-privacy p {padding-top:8px}
 .phone-coach [role="status"]:empty, .coach-settings [role="alert"]:empty {display:none}
 .coach-modes {margin-bottom:1rem;gap:6px}
 .coach-modes button {flex:1 1 auto}
@@ -22,8 +25,10 @@
 }
 .phone-coach textarea {resize:vertical}
 .phone-coach textarea:focus-visible {outline:3px solid #3689cc;outline-offset:3px}
-.coach-answer {padding:0 0 1rem;margin:0 0 1rem;border-bottom:1px solid #d4dfeb}
-.coach-answer h3 {margin:.7rem 0;font-size:1rem}
+.coach-answer {padding-top:1rem;margin-top:1rem;border-top:1px solid #d4dfeb}
+.coach-answer h3 {margin:1rem 0 .35rem;font-size:1rem}
+.coach-answer h3:first-child {margin-top:0}
+.coach-model {display:block;margin-top:.6rem;overflow-wrap:anywhere}
 .coach-answer h3, .coach-prose {overflow-wrap:anywhere}
 .coach-prose {margin:0 0 .5rem;line-height:1.75;white-space:pre-wrap}
 .coach-citations {margin-top:.6rem}

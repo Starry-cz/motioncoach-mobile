@@ -1,4 +1,4 @@
-const CACHE="motioncoach-pocket-1.1.1-1";
+const CACHE="motioncoach-pocket-1.2.0";
 const FILES=["./","./index.html","./app.js","./style.css","./manifest.webmanifest","./icon-180.png","./icon-192.png","./icon-512.png",
   "./assessment.js","./pose.js","./replay.js","./pdf.js","./library.js","./coach.js","./coach.css","./training.js","./training.css","./vendor/vision_bundle.mjs","./vendor/pose_landmarker_lite.task",
   "./vendor/wasm/vision_wasm_internal.js","./vendor/wasm/vision_wasm_internal.wasm","./vendor/wasm/vision_wasm_nosimd_internal.js",
@@ -13,8 +13,9 @@ self.addEventListener("install",event=>{
   })());
 });
 self.addEventListener("activate",event=>event.waitUntil((async()=>{
-  for(const name of await caches.keys())if(name.startsWith("motioncoach-pocket-") && name!==CACHE)await caches.delete(name);
+  // 先接管页面再移除旧缓存，让离线重开不会撞上切换时的空窗。
   await self.clients.claim();
+  for(const name of await caches.keys())if(name.startsWith("motioncoach-pocket-") && name!==CACHE)await caches.delete(name);
 })()));
 self.addEventListener("fetch",event=>{
   const request=event.request;

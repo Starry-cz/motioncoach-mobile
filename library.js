@@ -137,17 +137,18 @@ export async function saveCoaching(id, slot, state, lastVersion) {
 function scoresOf(report) {
   const a=report?.assessment;
   return {overall:a?.overall??null,body:a?.body??null,left:a?.left??null,right:a?.right??null,
-    focus:a?.moments?.[0]?.label || "", firstMoment:a?.moments?.[0]?.studentTime??null};
+    focus:a?.moments?.[0]?.label || "", firstMoment:a?.moments?.[0]?.studentTime??null, hasGuidance:Boolean(a?.guidance)};
 }
 
-export async function classScores(summary) {
+export async function classScores(summary, updateAssessment) {
   const rows=[];
   for (const [index,member] of summary.students.entries()) {
-    // 旧练习没有轻量评分索引，仅在首次查看总览时逐个读取，避免同时装入全班录像。
+    // 旧练习需要按新版可测规则重算，其余仅用入库时保存的轻量评分索引。
     let scores=member.scores;
-    if (!scores) {
+    if (!scores || (updateAssessment && !scores.hasGuidance)) {
       const request=await transact(media,"readonly",tx=>tx.objectStore(media).get([summary.id,index]));
-      scores=scoresOf(request.result?.report);
+      const report=request.result?.report;
+      scores=scoresOf(report && updateAssessment ? {assessment:updateAssessment(report)} : report);
     }
     rows.push({index,name:member.name,...scores});
   }

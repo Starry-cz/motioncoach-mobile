@@ -123,12 +123,13 @@ export async function makePDF({name, assessment, studentPose, referencePose, ima
     await paragraph(name, 22, true);
     await space(122);
     c.fillStyle = "#edf5fb"; c.fillRect(MARGIN, y, CONTENT, 106);
-    line("动作相似度", MARGIN + 15, y + 12, 12, true, BLUE);
+    line(assessment.coverage?.partial?"动作相似度 · 可测部位":"动作相似度", MARGIN + 15, y + 12, 12, true, BLUE);
     line(score(assessment.overall) + " / 100", MARGIN + 15, y + 34, 27, true, INK);
     const parts = [["身体", assessment.body], ["左手", assessment.left], ["右手", assessment.right]];
     parts.forEach(([label, value], i) => line(label + "  " + score(value), MARGIN + 16 + i * 151, y + 78, 13, false, INK));
     y += 119;
-    await paragraph("手机端姿态测量 · " + assessment.measured + " 个可测时刻", 11, false, MUTED);
+    const measured=assessment.coverage?.any ?? assessment.measured;
+    await paragraph("姿态比较 · " + measured + (assessment.coverage? " / "+assessment.coverage.sampled : "") + " 个可测时刻", 11, false, MUTED);
     if (images?.length === 2 && images.every(image => image?.width && image?.height)) {
       await space(194);
       const x = MARGIN + (CONTENT + 10) / 2;
@@ -145,16 +146,29 @@ export async function makePDF({name, assessment, studentPose, referencePose, ima
         const t = studentPose.frames[m.studentIndex].time, r = referencePose.frames[m.referenceIndex].time;
         await paragraph(m.label + "　练习 " + t.toFixed(2) + " 秒 · " + score(m.studentAngle) +
                         "°　　示范 " + r.toFixed(2) + " 秒 · " + score(m.referenceAngle) + "°", 12);
+        if(m.range) await paragraph("区间 "+m.range.start.toFixed(2)+"–"+m.range.end.toFixed(2)+" 秒 · 平均相差 "+score(m.meanDelta)+"°",11,false,MUTED);
       }
     }
     await heading("教练综合建议");
-    for (const value of assessment.advice) await paragraph(value);
+    if(assessment.guidance) {
+      const {summary,insights,coverageNote}=assessment.guidance;
+      await paragraph(summary,14,true,BLUE);
+      for(const item of insights) {
+        await space(60);
+        await paragraph(item.title,13,true);
+        await paragraph(item.text);
+      }
+      if(coverageNote) await paragraph(coverageNote,11,false,MUTED);
+    } else {
+      for(const value of assessment.advice) await paragraph(value);
+    }
     await flush();
     await heading("整体训练规划");
-    for (const [index, value] of assessment.plan.entries()) {
+    const steps=assessment.guidance?.steps || assessment.plan.map((text,index)=>({title:"第 "+(index+1)+" 次练习",text}));
+    for (const step of steps) {
       await space(59);
-      await paragraph("第 " + (index + 1) + " 次练习", 14, true, BLUE);
-      await paragraph(value);
+      await paragraph(step.title, 14, true, BLUE);
+      await paragraph(step.text);
       y += 6;
     }
     // 将同一名学生实际保存的云端反馈纳入导出，模型名和对应时刻随正文保留。

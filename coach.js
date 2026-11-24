@@ -7,11 +7,11 @@ const services = {
 const storageKey = "motioncoach-phone-ai-settings";
 const tabs = {review:"教练长评",plan:"训练计划",chat:"证据问答"};
 const instructions = {
-  review:"用三至五个自然段写一份约 350 至 550 中文字的教练长评。解释各评分的含义，把一个具体差异和下一遍该怎样练联系起来，最后说怎样复测。缺测时缩短篇幅并解释该补录什么。",
-  plan:"为同一学生制订一周的分段训练计划。按训练日列出重点、次数或时长、速度、观察点，最后给出在同一机位复测的判断条件。把训练目标与本次测量区分开。",
-  chat:"用中文直接回答本次学生的问题。若问到具体时刻，优先用该时刻的实测关节角。没有所问时刻或部位的证据时明说。若追问，用本学生最近几轮问答理解上下文，以本次测量为准。",
+  review:"写给刚看完这段录像的学生。用四小节，标题分别是「先看哪里」「动作对照」「这轮怎么练」「下一次怎么判断」，每个标题单独一行，小节之间空一行。先指出最值得练的位置及优先原因。对于证据充分的录像，挑两三个互补的动作观察点，优先覆盖不同部位或时段；若某点在许多共同画面里接近示范，可指出练别处时要保留它。至少把一条可点击证据与具体练法、复测动作连起来。长度随材料增减。缺测时充分讲可见部位，补录只在最后提一次。",
+  plan:"为同一学生制订三次循序渐进的复练。小标题用「第1次」到「第3次」，各自独立成行，小节间留空行。每次都写练哪一段、做几遍、用多快、看哪个位置，以及达到什么表现后可以加速。第一次找位置，第二次练过渡，第三次按原速录制并用同一示范验收。不要指定未测到的动作。",
+  chat:"用中文直接回答本次学生的问题。先回答，再给最多两步做法。指定秒数时优先使用该时刻的局部数据。缺少证据就明确说哪一项没有测到。追问可参考这名学生的最近问答。",
 };
-const systemPrompt = "你是舞蹈与啦啦操教练。只依据本轮提供的当前学生测量做判断；没有视频、声音、三维信息或其他学生数据。身体分反映对齐后的躯干、髋和膝角差；左右腕分反映腕点相对躯干的位置，不代表手型。不要编造评分、时刻、角差、动作名、节拍、诊断或进步趋势。空分代表缺测。请用普通中文和分段换行，不用 Markdown。输出 JSON 对象，text 为完整正文字符串，citations 为正文引用的材料 id 字符串数组。引用实测画面时必须选用所给 id，没有相关画面则返回空数组。";
+const systemPrompt = "你是带舞蹈与啦啦操复练的教练。像在学生旁边说话，短句，动词具体，例如「先停在这一拍」「把左肘多收一点」。直接讲重点，避免开场夸奖、逐项念分数、行话和重复结论。以当前学生的二维姿态测量为依据。仅用测到的部位和时刻，空分是缺测，不能拿局部满分评价完整动作。身体分来自可测的躯干、髋和膝的角度；腕位分反映手腕相对身体的位置。上臂方向是相对画面竖直向下的角度，和相对躯干的上举角分别解读。只在证据给出连续区间时才说连续出现，单个时刻请用「这一拍」，不要推断节奏、力度、手型、三维姿势、原因或既往进步。不要写「发给我」「我再帮你判断」。用中文、短段落，不加 Markdown。返回 JSON 对象，text 是完整正文字符串，citations 是正文用到的材料 id 数组，只能从证据 cards 择用。";
 
 let activeService = "deepseek", profiles, dialog;
 function loadSettings() {
@@ -62,7 +62,7 @@ export function openCoachSettings() {
     <label>模型<select name="model" aria-label="模型"></select></label>
     <label>API Key<input name="key" type="password" required autocomplete="off" autocapitalize="none" spellcheck="false"></label>
     <label class="coach-remember"><input name="remember" type="checkbox">在此设备记住该服务的 Key</label>
-    <p class="coach-hint">在共享手机上可仅本次使用。生成内容会按所选服务的账号用量计费。</p>
+    <details class="coach-privacy"><summary>数据与计费</summary><p>生成时发送该学生的动作测量。提问会附上最近三轮问答。录像保留在设备上，所选服务按账号用量计费。</p></details>
     <p class="coach-error" role="alert"></p>
     <div class="coach-actions"><button type="submit" class="primary">应用设置</button><button type="button" data-clear>清除此服务的 Key</button><button type="button" data-close>关闭</button></div></form>`;
   dialog.setAttribute("aria-labelledby","coach-settings-title");
@@ -109,8 +109,12 @@ function reading(moment) {
 }
 
 export function buildEvidence({assessment:a,studentPose,referencePose},question="") {
-  const cards=a.moments.map((moment,i)=>({id:"E"+(i+1),label:moment.label,studentTime:rounded(moment.studentTime,3),
-    referenceTime:rounded(moment.referenceTime,3),angles:[reading(moment)]}));
+  const cards=a.moments.map((moment,i)=>({
+    id:"E"+(i+1),label:moment.label,studentTime:rounded(moment.studentTime,3),
+    referenceTime:rounded(moment.referenceTime,3),angles:[reading(moment)],
+    span:moment.range?{start:rounded(moment.range.start,3),end:rounded(moment.range.end,3),
+      sampledFrames:moment.observations,meanDegrees:rounded(moment.meanDelta)}:null
+  }));
   // 用户点名的练习时刻即使不在突出差异榜上，也按相同对齐路径查询。
   const time=question.match(/(?:(\d+)\s*分\s*)?(\d+(?:\.\d+)?)\s*秒/);
   if (time) {
@@ -118,9 +122,15 @@ export function buildEvidence({assessment:a,studentPose,referencePose},question=
     cards.push({id:"T",label:"指定时刻",studentTime:rounded(frame.studentTime,3),
       referenceTime:rounded(frame.referenceTime,3),angles:frame.angles.map(reading)});
   }
+  // 只发送分数和派生测量，模型可区分各部位覆盖与局部峰值，无需传输骨架或原始录像。
+  const coverage=a.coverage?{
+    angleComparableFrames:a.coverage.any,scoreFrames:a.coverage.parts,partial:a.coverage.partial,
+    joints:a.coverage.metrics.map(metric=>({label:metric.label,frames:metric.frames,meanDegrees:rounded(metric.meanDelta),
+      closeFrames:metric.stable,differenceFrames:metric.differenceFrames})),
+  }:undefined;
   return {scores:{overall:rounded(a.overall),body:rounded(a.body),leftWrist:rounded(a.left),rightWrist:rounded(a.right)},
     measuredFrames:a.measured,sampledStudentFrames:studentPose.frames.length,studentSeconds:rounded(studentPose.duration,2),
-    referenceSeconds:rounded(referencePose.duration,2),cards};
+    referenceSeconds:rounded(referencePose.duration,2),coverage,cards};
 }
 
 function serviceError(code) {
@@ -171,13 +181,12 @@ export function mountCoach(host,{assessment,studentPose,referencePose,seek,saved
   let current="review",report={...saved,chat:saved?.chat || []},pending=null,needsSave=false;
   host.classList.add("panel","phone-coach");
   host.innerHTML=`
-    <div class="coach-heading"><h2>AI 动作教练</h2><button type="button" data-settings>AI 服务设置</button></div>
-    <p class="coach-hint" data-service></p>
+    <div class="coach-heading"><div><h2>AI 动作教练</h2><small data-service></small></div><button type="button" data-settings>AI 服务设置</button></div>
     <div class="coach-modes" role="group" aria-label="教练功能"></div>
-    <div data-result></div>
     <label class="coach-question" hidden>你的问题<textarea rows="2" maxlength="800" placeholder="例如，第 3 秒的右膝与示范相差多少？"></textarea></label>
     <div class="coach-actions"><button type="button" class="primary" data-generate></button><button type="button" data-cancel hidden>取消请求</button><button type="button" data-retry hidden>重试保存</button></div>
-    <p data-status role="status"></p>`;
+    <p data-status role="status"></p>
+    <div data-result></div>`;
   const area=host.querySelector("[data-result]"),modes=host.querySelector(".coach-modes");
   const generate=host.querySelector("[data-generate]"),cancel=host.querySelector("[data-cancel]");
   const status=host.querySelector("[data-status]"),retry=host.querySelector("[data-retry]");
@@ -185,21 +194,26 @@ export function mountCoach(host,{assessment,studentPose,referencePose,seek,saved
 
   function showService() {
     const spec=services[activeService],profile=profiles[activeService];
-    const model=profile?.model || spec.models[0];
-    serviceLabel.textContent=spec.name+" · "+model+"。生成时发送该学生的评分和动作证据。提问会附上最近三轮问答。视频留在设备上。";
+    serviceLabel.textContent=profile?profile.model:spec.name+" · 未配置";
   }
 
   function renderAnswer(item) {
     const answer=el("article",null,"coach-answer");
     if (item.question) answer.append(el("h3",item.question));
-    answer.append(el("p",item.text,"coach-prose"),el("small","模型 · "+item.model));
+    for(const block of item.text.split(/\n\s*\n/)) {
+      const [first,...rest]=block.trim().split("\n");
+      if(rest.length && /^(先看哪里|动作对照|这轮怎么练|下一次怎么判断|第[1-3一二三]次)$/.test(first)) {
+        answer.append(el("h3",first),el("p",rest.join("\n"),"coach-prose"));
+      } else if(first) answer.append(el("p",block,"coach-prose"));
+    }
+    if(item.model) answer.append(el("small",item.model,"coach-model"));
     if (seek && item.citations?.length) {
       const links=el("div",null,"coach-citations");
       for (const card of item.citations) {
         const button=el("button","回看 "+card.studentTime.toFixed(2)+" 秒 · "+card.label);
         button.type="button";
         button.onclick=()=>{
-          seek(card.studentTime);
+          seek(card.studentTime,card.label);
           host.closest("#review")?.querySelector(".videos")?.scrollIntoView({block:"start"});
         };
         links.append(button);
