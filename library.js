@@ -6,6 +6,12 @@ const coaching = "coaching";
 const standards = "standards";
 const standardVideos = "standardVideos";
 
+function localId() {
+  // 资料编号只作本机数据库主键，直接使用 128 位随机数，兼容没有 randomUUID 的 WebView。
+  const bytes=crypto.getRandomValues(new Uint8Array(16));
+  return Array.from(bytes,byte=>byte.toString(16).padStart(2,"0")).join("");
+}
+
 function openLibrary() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(databaseName, 2);
@@ -59,7 +65,7 @@ export async function savePractice({title, reference, students}) {
       students.some(student => !(student.blob instanceof Blob) || student.report == null)) {
     throw new Error("需要一份标准视频及每名学生的录像和复盘结果。");
   }
-  const id = crypto.randomUUID();
+  const id = localId();
   const summary = {
     id, title, createdAt: Date.now(), referenceName: reference.name, standardId: reference.standardId || null,
     students: students.map(student => ({name: student.name, scores: scoresOf(student.report)})),
@@ -149,7 +155,7 @@ export async function classScores(summary) {
 }
 
 export async function addStandard(file) {
-  const id=crypto.randomUUID();
+  const id=localId();
   await transact([standards,standardVideos],"readwrite",tx=>{
     tx.objectStore(standards).add({id,name:file.name,createdAt:Date.now(),size:file.size});
     tx.objectStore(standardVideos).add(file,id);

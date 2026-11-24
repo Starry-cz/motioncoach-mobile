@@ -20,7 +20,7 @@ function loadSettings() {
   try {
     const saved = JSON.parse(localStorage.getItem(storageKey));
     if (!saved) return;
-    if (Object.hasOwn(services,saved.selected)) activeService = saved.selected;
+    if (Object.prototype.hasOwnProperty.call(services,saved.selected)) activeService = saved.selected;
     for (const id of Object.keys(services)) {
       const item = saved.profiles?.[id];
       if (item?.key && services[id].models.includes(item.model)) profiles[id] = {...item,remember:true};
