@@ -4,8 +4,9 @@ import {savePractice,listPractices,openPractice,deletePractice,saveCoaching,clas
   addStandard,listStandards,readStandard,removeStandard} from "./library.js";
 import {replay} from "./replay.js";
 import {makePDF} from "./pdf.js";
-import {mountCoach,openCoachSettings} from "./coach.js";
+import {coachServiceLabel,mountCoach,openCoachSettings,provisionDefaultDeepSeek} from "./coach.js";
 import {mountTraining} from "./training.js";
+import {mountAccount} from "./account.js";
 
 const $=s=>document.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
@@ -25,6 +26,16 @@ function show(id,nav) {
   for(const button of ["work","records","standards-nav","training-nav"]){if(button===nav) $("#"+button).setAttribute("aria-current","page");else $("#"+button).removeAttribute("aria-current");}
   window.scrollTo(0,0);
 }
+// 退出后结束当前复盘和未完成操作，设备里的练习与模型设置继续保留。
+window.addEventListener("motioncoach-account",({detail})=>{
+  $("#ai-settings").hidden=!detail.unlocked;
+  if(!detail.unlocked) {
+    run?.abort();
+    provisionDefaultDeepSeek(null);
+    for(const dialog of document.querySelectorAll("dialog[open]"))dialog.close();
+    show("form","work");
+  }
+});
 function filesChanged() {
   const ref=standard||$("#ref-file").files[0],students=Array.from($("#stu-files").files);
   $("#ref-name").textContent=ref?.name||"选择示范";
@@ -35,7 +46,7 @@ function filesChanged() {
 }
 function busy(value) {
   $("#progress-area").hidden=!value;
-  for(const id of ["ref-file","stu-files","work","records","standards-nav","training-nav","choose-standard","check-update"]) $("#"+id).disabled=value;
+  for(const id of ["ref-file","stu-files","work","records","standards-nav","training-nav","choose-standard","check-update","ai-settings"]) $("#"+id).disabled=value;
   filesChanged();
 }
 async function analyze() {
@@ -78,6 +89,28 @@ async function history(){
   } catch(e){notice(e.message);}
 }
 
+function scoreScope(mode,partial) {
+  if(mode==="upper")return "上半身";
+  if(mode==="standard")return partial?"可测部位":"全身";
+  return "";
+}
+
+function scoreMarkup(a) {
+  const scope=scoreScope(a.scoreMode,a.coverage.partial);
+  const parts=a.scoreParts.map(part=>'<div><span>'+esc(part.label)+'</span><strong>'+display(part.value)+'</strong></div>').join("");
+  const result=a.overall===null
+    ? '<div class="score-empty"><strong>暂未评分</strong><span>连续可测的动作片段不足。仍可同步回看。</span></div>'
+    : '<div class="metrics"><div><span>'+scope+'相似度</span><strong>'+display(a.overall)+'</strong></div>'+parts+'</div>';
+  return `<section class="review-section scoring" id="score-review">
+    <div class="section-head"><h2>动作评分</h2><button id="go-coach" class="quiet">AI 教练 ↓</button></div>
+    ${result}
+    ${a.overall!==null && a.guidance.coverageNote?'<p class="coverage-note">'+esc(a.guidance.coverageNote)+'</p>':""}
+    <details class="metric-details"><summary>评分依据</summary><p>${a.scoreMode==="upper"
+      ?"对比可测的肩线、上臂方向和肘角。"
+      :"身体分比较躯干、髋和膝角。腕位分比较腕点相对髋中心的位置。"}</p></details>
+  </section>`;
+}
+
 // 关键片段与复练步骤共用证据序号，点击任一位置都回到相同的动作。
 function feedbackMarkup(a) {
   const data=a.guidance;
@@ -95,13 +128,8 @@ function feedbackMarkup(a) {
   const steps=data.steps.map(step=>'<li><div><h3>'+esc(step.title)+'</h3><p>'+esc(step.text)+'</p>'+
     evidenceButton(step.momentIndex,"定位练习")+'</div></li>').join("");
   return `<section class="review-section" id="feedback">
-    <div class="section-head"><h2>动作评分${a.overall===null?' <small>仅作回看参考</small>':a.coverage.partial?' <small>可测部分</small>':""}</h2><button id="go-coach" class="quiet">AI 长评与问答 ↓</button></div>
-    <div class="metrics">${[["总体",a.overall],["身体",a.body],["左腕",a.left],["右腕",a.right]].map(([label,v])=>
-      '<div><span>'+label+'</span><strong>'+display(v)+'</strong></div>').join("")}</div>
-    ${data.coverageNote?'<p class="coverage-note">'+esc(data.coverageNote)+'</p>':""}
-    <h2 class="feedback-title">教练建议</h2><p class="feedback-summary">${esc(data.summary)}</p>
+    <h2>教练建议</h2><p class="feedback-summary">${esc(data.summary)}</p>
     <div class="insight-list">${insights}</div>
-    <details class="metric-details"><summary>评分依据</summary><p>身体比较躯干、髋和膝的可测角度。左右腕比较腕点相对髋中心的位置。</p></details>
   </section>
   <section class="review-section"><h2>训练规划</h2><ol class="training-steps">${steps}</ol></section>`;
 }
@@ -126,6 +154,7 @@ function playerMarkup(a) {
         <select id="speed" aria-label="播放速度"><option value="0.5">0.5×</option><option selected value="1">1×</option></select></div>
     </div>
   </section>
+  ${scoreMarkup(a)}
   ${moments?'<section class="review-section review-evidence"><h2>关键片段</h2><div class="evidence">'+moments+'</div></section>':""}
   <details id="frame-data" class="review-section"><summary>定点复练与本帧角度</summary>
     <div class="toolbar"><button id="mark-a">设 A</button><button id="mark-b">设 B</button><button id="ab-loop" aria-pressed="false" disabled>A–B 循环</button><span id="loop-times" role="status"></span></div>
@@ -162,8 +191,13 @@ async function open(id,index,startTime=0) {
         const rows=await classScores(data.summary,report=>refreshAssessment(reference,report.pose,report.assessment),ASSESSMENT_VERSION);
         if(view!==revision)return;
         const area=$("#class-content");
-        area.innerHTML='<div class="table-scroll"><table><thead><tr><th>学生</th><th>总体</th><th>身体</th><th>左手</th><th>右手</th></tr></thead><tbody>'+
-          rows.map(row=>'<tr><th><button data-member="'+row.index+'">'+esc(row.name)+'</button></th>'+["overall","body","left","right"].map(k=>'<td>'+display(row[k])+'</td>').join("")+'</tr>').join("")+
+        area.innerHTML='<div class="table-scroll class-table"><table><thead><tr><th>学生</th><th>相似度</th><th>分项</th></tr></thead><tbody>'+
+          rows.map(row=>{
+            const scope=scoreScope(row.scoreMode,row.partial);
+            const parts=row.scoreParts.filter(part=>part.value!==null).map(part=>'<span>'+esc(part.label)+' '+display(part.value)+'</span>').join("");
+            return '<tr><th><button data-member="'+row.index+'">'+esc(row.name)+'</button></th><td>'+display(row.overall)+
+              (scope?'<small>'+scope+'</small>':"")+'</td><td><div class="class-parts">'+(parts || "—")+'</div></td></tr>';
+          }).join("")+
           '</tbody></table></div><button id="class-pdf">导出班级 PDF</button><div id="class-download"></div>';
         area.querySelectorAll("[data-member]").forEach(b=>b.onclick=()=>open(id,Number(b.dataset.member)));
         $("#class-pdf").onclick=async event=>{
@@ -227,7 +261,16 @@ async function standardsPage() {
 $("#work").onclick=()=>show("form","work");$("#records").onclick=history;
 $("#standards-nav").onclick=standardsPage;$("#choose-standard").onclick=standardsPage;
 $("#training-nav").onclick=()=>{show("training","training-nav");training=mountTraining($("#training"),{openReview:open});};
-$("#ai-settings").onclick=()=>openCoachSettings();
+const settingsDialog=$("#settings-dialog");
+const account=mountAccount({onLogin:({coachKey})=>provisionDefaultDeepSeek(coachKey)});
+$("#ai-settings").hidden=!account.isUnlocked();
+$("#ai-settings").onclick=()=>{
+  $("#settings-ai-label").textContent=coachServiceLabel();
+  settingsDialog.showModal();
+};
+$("#close-settings").onclick=()=>settingsDialog.close();
+$("#open-service-settings").onclick=()=>{settingsDialog.close();openCoachSettings();};
+$("#settings-update").onclick=()=>{settingsDialog.close();$("#check-update").click();};
 $("#add-standard").onchange=async e=>{
   const input=e.currentTarget,file=input.files[0];if(!file)return;input.disabled=true;
   try{await addStandard(file);if(!$("#standards").hidden)await standardsPage();}catch(err){notice(err.message);}

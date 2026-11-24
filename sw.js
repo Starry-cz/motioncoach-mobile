@@ -1,10 +1,10 @@
-const VERSION="1.2.3";
+const VERSION="1.3.0";
 const CACHE="motioncoach-pocket-"+VERSION;
 const MODEL_EDITION="mediapipe-0.10.21-pose-lite-1";
 // 这些版本使用相同的 MediaPipe 运行库与 Pose Landmarker Lite 模型，可直接复用下载结果。
 const REUSABLE=["motioncoach-pocket-1.2.1","motioncoach-pocket-1.2.0","motioncoach-pocket-1.1.1-1","motioncoach-pocket-1.1.0-1"];
 const FILES=["./","./index.html","./app.js","./style.css","./manifest.webmanifest","./icon-180.png","./icon-192.png","./icon-512.png",
-  "./assessment.js","./pose.js","./replay.js","./pdf.js","./library.js","./coach.js","./coach.css","./training.js","./training.css","./vendor/vision_bundle.mjs","./vendor/pose_landmarker_lite.task",
+  "./assessment.js","./pose.js","./replay.js","./pdf.js","./library.js","./account.js","./coach.js","./coach.css","./training.js","./training.css","./vendor/vision_bundle.mjs","./vendor/pose_landmarker_lite.task",
   "./vendor/wasm/vision_wasm_internal.js","./vendor/wasm/vision_wasm_internal.wasm","./vendor/wasm/vision_wasm_nosimd_internal.js",
   "./vendor/wasm/vision_wasm_nosimd_internal.wasm","./vendor/LICENSE-mediapipe.txt","./vendor/NOTICE.txt"];
 const assets=new Set(FILES.map(p=>new URL(p,self.registration.scope).href));

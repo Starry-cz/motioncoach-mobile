@@ -13,10 +13,10 @@ const instructions = {
 };
 const systemPrompt = "你是带舞蹈与啦啦操复练的教练。像在学生旁边说话，用短句和具体动作，例如「先停在这一拍」「把左肘多收一点」。直接讲重点，避免逐项念分数和重复结论。" +
   "视频可按动作顺序全段同步回看。以当前学生的二维姿态测量为依据，空分表示可测数据不足以评分。覆盖少时，从全段回看和实际测到的动作给出简短做法，采样计数留在分析数据里。不能拿局部满分评价完整动作。" +
-  "身体分来自可测的躯干、髋和膝的角度。腕位分反映手腕相对身体的位置。上臂方向是相对画面竖直向下的角度，和相对躯干的上举角分别解读。证据给出连续区间时才说连续出现。不要推断节奏、力度、手型、三维姿势、原因或既往进步。" +
+  "身体分来自可测的躯干、髋和膝的角度。腕位分反映手腕相对身体的位置。scoreMode 为 upper 时，总分仅说明可测上半身，按 scoreParts 解释肩线和手臂分，不能把它叫全身得分。上臂方向是相对画面竖直向下的角度，和相对躯干的上举角分别解读。证据给出连续区间时才说连续出现。不要推断节奏、力度、手型、三维姿势、原因或既往进步。" +
   "用中文、短段落，不加 Markdown。返回 JSON 对象，text 是完整正文字符串，citations 是正文用到的材料 id 数组，只能从证据 cards 择用。";
 
-let activeService = "deepseek", profiles, dialog;
+let activeService = "deepseek", profiles, dialog, defaultDeepSeek;
 function loadSettings() {
   if (profiles) return;
   profiles = {};
@@ -30,6 +30,21 @@ function loadSettings() {
     }
   } catch { /* 浏览器禁止存储时仍可由用户选择仅在本次打开期间使用。 */ }
 }
+
+export function coachServiceLabel() {
+  loadSettings();
+  return profileFor(activeService)?.key ? services[activeService].name+" · 已配置" : "未配置";
+}
+
+export function provisionDefaultDeepSeek(key) {
+  loadSettings();
+  // 内测预设仅留在登录期间的内存里。现有个人配置优先，退出时只释放预设。
+  defaultDeepSeek=key ? {key,model:services.deepseek.models[0],remember:false} : null;
+  if(key && !profiles[activeService])activeService="deepseek";
+  window.dispatchEvent(new Event("motioncoach-ai-settings"));
+}
+
+function profileFor(id) { return profiles[id] || (id==="deepseek"?defaultDeepSeek:null); }
 
 function saveSettings(id, profile) {
   const updated = {...profiles};
@@ -75,13 +90,13 @@ export function openCoachSettings() {
   for (const [id,spec] of Object.entries(services)) service.add(new Option(spec.name,id));
   service.value=activeService;
   function selectService() {
-    const id=service.value, profile=profiles[id];
+    const id=service.value, profile=profileFor(id);
     model.replaceChildren(...services[id].models.map(name=>new Option(name,name)));
     model.value=profile?.model || services[id].models[0];
     key.value=profile?.key || "";
     key.setCustomValidity("");
     remember.checked=Boolean(profile?.remember);
-    clear.disabled=!profile?.key;
+    clear.disabled=!profiles[id]?.key;
     error.textContent="";
   }
   selectService();
@@ -92,7 +107,8 @@ export function openCoachSettings() {
     const value=key.value.trim();
     if (!value || /\s/.test(value)) {key.setCustomValidity("请输入完整的 API Key，请去掉空格或换行。");key.reportValidity();return;}
     try {
-      saveSettings(service.value,{model:model.value,key:value,remember:remember.checked});
+      const usingDefault=service.value==="deepseek" && value===defaultDeepSeek?.key && model.value===defaultDeepSeek.model;
+      saveSettings(service.value,usingDefault?null:{model:model.value,key:value,remember:remember.checked});
       dialog.close();
     } catch(e) { error.textContent=e.message; }
   };
@@ -132,6 +148,7 @@ export function buildEvidence({assessment:a,studentPose,referencePose},question=
       closeFrames:metric.stable,differenceFrames:metric.differenceFrames})),
   }:undefined;
   return {scores:{overall:rounded(a.overall),body:rounded(a.body),leftWrist:rounded(a.left),rightWrist:rounded(a.right)},
+    scoreMode:a.scoreMode,scoreParts:a.scoreParts?.map(part=>({label:part.label,value:rounded(part.value),samples:part.samples})),
     measuredFrames:a.measured,sampledStudentFrames:studentPose.frames.length,studentSeconds:rounded(studentPose.duration,2),
     referenceSeconds:rounded(referencePose.duration,2),coverage,cards};
 }
@@ -196,7 +213,7 @@ export function mountCoach(host,{assessment,studentPose,referencePose,seek,saved
   const field=host.querySelector("textarea"),serviceLabel=host.querySelector("[data-service]");
 
   function showService() {
-    const spec=services[activeService],profile=profiles[activeService];
+    const spec=services[activeService],profile=profileFor(activeService);
     serviceLabel.textContent=profile?profile.model:spec.name+" · 未配置";
   }
 
@@ -275,7 +292,7 @@ export function mountCoach(host,{assessment,studentPose,referencePose,seek,saved
   });
   listen(generate,"click",async()=>{
     if (pending) return;
-    const mode=current,question=mode==="chat"?field.value.trim():"",service=activeService,profile=profiles[service];
+    const mode=current,question=mode==="chat"?field.value.trim():"",service=activeService,profile=profileFor(service);
     if (mode==="chat" && !question) {feedback("请先输入想问的动作或时刻。",true);field.focus();return;}
     if (!profile) {feedback("请先配置此服务的 API Key，然后再次点生成。");openCoachSettings();return;}
     const controller=new AbortController();

@@ -1,8 +1,18 @@
 // 直接使用视频原画幅宽高比，避免竖屏视频的肘角在归一化坐标中被拉伸。
 const labels = ["躯干侧倾","左髋角","右髋角","左膝角","右膝角","左肘角","右肘角","左臂上举角","右臂上举角",
   "左上臂方向","右上臂方向","肩线倾斜"];
-export const ASSESSMENT_VERSION = 3;
+export const ASSESSMENT_VERSION = 4;
 const noticeableDegrees = 12;
+const standardParts = [
+  {key:"body",label:"身体",scale:90},
+  {key:"leftWrist",label:"左腕",scale:1},
+  {key:"rightWrist",label:"右腕",scale:1},
+];
+const upperParts = [
+  {key:"shoulders",label:"肩线",scale:90},
+  {key:"leftArm",label:"左臂",scale:90},
+  {key:"rightArm",label:"右臂",scale:90},
+];
 const motionBones = [
   ["r_shoulder","l_shoulder"],
   ["l_shoulder","l_elbow"],["l_elbow","l_wrist"],["r_shoulder","r_elbow"],["r_elbow","r_wrist"],
@@ -221,10 +231,12 @@ function cue({metric,direction}) {
   return "跟着示范把身体慢慢带到对应的倾斜位置，接上前后两拍再试一次。";
 }
 
-function recommend({moments,metrics,points,sampled,measured}) {
+function recommend({moments,metrics,points,sampled,measured,scoreMode}) {
   const stable=metrics.filter(item=>item.frames>=Math.max(3,sampled*.45) && item.stable/item.frames>=.8)
     .sort((a,b)=>b.stable-a.stable || a.meanDelta-b.meanDelta)[0];
-  const coverageNote=points.partial ? "评分取自两段画面中共同可测的关节。" : "";
+  const coverageNote=scoreMode==="upper" ? "仅按两段画面中共同可测的肩线和手臂评分。"
+    : scoreMode==="unavailable" ? "共同可测的动作片段不足以评分，仍可同步回看。"
+    : points.partial ? "评分取自两段画面中共同可测的关节。" : "";
   const insights=moments.slice(0,3).map((moment,momentIndex)=>{
     const pattern=moment.range
       ? "练习 "+moment.range.start.toFixed(2)+"–"+seconds(moment.range.end)+" 连续 "+moment.observations+" 个采样点存在角差，平均 "+degrees(moment.meanDelta)+"。"
@@ -259,12 +271,13 @@ function recommend({moments,metrics,points,sampled,measured}) {
 function measure(reference,student,r,s,playback) {
   const alignment=sampledAlignment(reference,student,playback);
   const rt=reference.frames.map(f=>f.time),st=student.frames.map(f=>f.time);
-  const sums=[0,0,0],counts=[0,0,0],stats=labels.map(label=>({label,frames:0,sum:0,stable:0,differenceFrames:0}));
-  const lastRef=[-1,-1,-1],distinctRef=[0,0,0];
+  const scoreStats=[...standardParts,...upperParts].map(part=>({...part,sum:0,samples:0,lastRef:-1,distinctRef:0}));
+  const stats=labels.map(label=>({label,frames:0,sum:0,stable:0,differenceFrames:0}));
   const maxGap=Math.max(.25,1.6*student.duration/Math.max(1,st.length-1));
-  let measured=0,anglesMeasured=0;
+  const mean=values=>values.length?values.reduce((sum,value)=>sum+value,0)/values.length:NaN;
+  let standardMeasured=0,upperMeasured=0,anglesMeasured=0;
   s.forEach((a,i)=>{
-    const ri=alignment[i],b=r[ri],body=[];
+    const ri=alignment[i],b=r[ri],body=[],arms=[[],[]];
     const readings=pairAngles(a,b);
     if(readings.length) anglesMeasured++;
     for(const reading of readings) {
@@ -272,6 +285,7 @@ function measure(reference,student,r,s,playback) {
       stat.frames++;stat.sum+=delta;
       if(delta<=8) stat.stable++;
       if(metric<5) body.push(delta);
+      if(metric>=5 && metric<=10) arms[metric%2===1?0:1].push(delta);
       if(delta<3) continue;
       const direction=metric===0 || metric===11?0:Math.sign(studentAngle-referenceAngle);
       const point={...reading,studentIndex:i,referenceIndex:ri,studentTime:st[i],referenceTime:rt[ri],direction};
@@ -283,32 +297,46 @@ function measure(reference,student,r,s,playback) {
       run.count++;run.sum+=delta;run.direction+=direction;run.end=st[i];run.index=i;
       if(delta>run.peak.delta) run.peak=point;
     }
-    const errors=[body.length?body.reduce((x,y)=>x+y)/body.length:NaN,dist(a.ends[0],b.ends[0]),dist(a.ends[1],b.ends[1])];
-    errors.forEach((v,k)=>{
-      if(!Number.isFinite(v)) return;
-      sums[k]+=v;counts[k]++;
-      if(lastRef[k]!==ri){lastRef[k]=ri;distinctRef[k]++;}
+    // 上半身评分独立于髋点。肩线可测时直接取两边角差，手臂只用两边都看到的角度。
+    const shoulders=angleDifference(a.angles[11],b.angles[11],11);
+    const fullErrors=[mean(body),dist(a.ends[0],b.ends[0]),dist(a.ends[1],b.ends[1])];
+    const upperErrors=[shoulders,mean(arms[0]),mean(arms[1])];
+    [...fullErrors,...upperErrors].forEach((error,index)=>{
+      if(!Number.isFinite(error))return;
+      const part=scoreStats[index];
+      part.sum+=error;part.samples++;
+      if(part.lastRef!==ri){part.lastRef=ri;part.distinctRef++;}
     });
-    if(errors.some(Number.isFinite)) measured++;
+    if(fullErrors.some(Number.isFinite))standardMeasured++;
+    if(upperErrors.some(Number.isFinite))upperMeasured++;
   });
   stats.forEach(finishRun);
   // 单个测量或反复落在同一示范画面的瞬时结果不能代表一整段得分。
-  const parts=sums.map((sum,k)=>counts[k]>=3 && distinctRef[k]>=2
-    ? 100*Math.max(0,1-sum/counts[k]/(k?1:90)) : null);
+  const parts=scoreStats.map(({key,label,scale,sum,samples,distinctRef})=>({
+    key,label,samples,value:samples>=3 && distinctRef>=2 ? 100*Math.max(0,1-sum/samples/scale) : null,
+  }));
+  const full=parts.slice(0,standardParts.length),upper=parts.slice(standardParts.length);
   const moments=stats.flatMap(stat=>stat.interval?[stat.interval]:stat.peak?[{...stat.peak,range:null,observations:1,
     meanDelta:stat.peak.delta,priority:stat.peak.delta*.8}]:[])
     .sort((a,b)=>b.priority-a.priority).slice(0,4).map(({priority,...point})=>point);
-  const available=parts.filter(v=>v!==null);
-  const overall=available.length?available.reduce((a,b)=>a+b)/available.length:null;
   const sampled=s.length;
   const metrics=stats.map(({label,frames,sum,stable,differenceFrames})=>({label,frames,meanDelta:frames?sum/frames:null,stable,differenceFrames}));
   const legs=Math.min(...stats.slice(3,5).map(stat=>stat.frames))>=Math.max(1,sampled*.25);
-  const partial=!legs||parts.some((score,k)=>score===null || counts[k]<sampled*.65)||stats[0].frames<sampled*.65;
-  const coverage={sampled,any:anglesMeasured,metrics,parts:{body:counts[0],left:counts[1],right:counts[2]},legs,partial};
-  const guidance=recommend({moments,metrics,points:coverage,sampled,measured});
+  const hasFull=full.some(part=>part.value!==null);
+  const hasUpper=upper.some(part=>part.value!==null);
+  const preferUpper=!hasFull || (!legs && upper.slice(1).some(part=>part.value!==null));
+  const scoreMode=hasUpper && preferUpper ? "upper" : hasFull ? "standard" : "unavailable";
+  const scoreParts=scoreMode==="upper"?upper:scoreMode==="standard"?full:[];
+  const available=scoreParts.filter(part=>part.value!==null).map(part=>part.value);
+  const overall=available.length?mean(available):null;
+  const measured=scoreMode==="upper"?upperMeasured:scoreMode==="standard"?standardMeasured:Math.max(standardMeasured,upperMeasured);
+  const partial=scoreMode!=="standard"||!legs||full.some(part=>part.value===null || part.samples<sampled*.65)||stats[0].frames<sampled*.65;
+  const coverage={sampled,any:anglesMeasured,metrics,parts:{body:full[0].samples,left:full[1].samples,right:full[2].samples},legs,partial};
+  const guidance=recommend({moments,metrics,points:coverage,sampled,measured,scoreMode});
   const advice=[guidance.summary,...guidance.insights.map(item=>item.text),guidance.coverageNote].filter(Boolean);
   const plan=guidance.steps.map(step=>step.title+"。"+step.text);
-  return {version:ASSESSMENT_VERSION,alignment,playback,body:parts[0],left:parts[1],right:parts[2],overall,measured,moments,coverage,guidance,advice,plan};
+  return {version:ASSESSMENT_VERSION,alignment,playback,body:full[0].value,left:full[1].value,right:full[2].value,
+    overall,scoreMode,scoreParts,measured,moments,coverage,guidance,advice,plan};
 }
 
 export function compare(reference,student) {

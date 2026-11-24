@@ -137,6 +137,7 @@ export async function saveCoaching(id, slot, state, lastVersion) {
 function scoresOf(report) {
   const a=report?.assessment;
   return {overall:a?.overall??null,body:a?.body??null,left:a?.left??null,right:a?.right??null,
+    scoreMode:a?.scoreMode??null,scoreParts:a?.scoreParts??null,partial:a?.coverage?.partial??false,
     focus:a?.moments?.[0]?.label || "", firstMoment:a?.moments?.[0]?.studentTime??null, version:a?.version??0};
 }
 

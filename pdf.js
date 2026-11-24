@@ -4,6 +4,15 @@ const INK = "#162d42", BLUE = "#185b95", MUTED = "#506578";
 const score = v => Number.isFinite(v) ? v.toFixed(1) : "—";
 const font = (px, bold) => (bold ? "600 " : "400 ") + px + 'px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
 
+function reportScores(data) {
+  const scope = data.scoreMode === "upper" ? "上半身" : data.partial || data.coverage?.partial ? "可测部位" : "全身";
+  // 直接使用同一评分口径的分项。旧报告仍能按已有的身体、左右腕字段导出。
+  const parts = data.scoreParts ?? [
+    {label:"身体",value:data.body}, {label:"左腕",value:data.left}, {label:"右腕",value:data.right},
+  ];
+  return {scope,overall:data.overall,parts:parts.filter(part=>Number.isFinite(part.value))};
+}
+
 function hexText(text) {
   let encoded = "FEFF";
   for (let i = 0; i < text.length; i++) encoded += text.charCodeAt(i).toString(16).padStart(4, "0");
@@ -114,7 +123,11 @@ export async function makePDF({name, assessment, studentPose, referencePose, ima
       for (const row of classroom.rows) {
         await space(105);
         await paragraph(row.name,15,true,BLUE);
-        await paragraph("总体 "+score(row.overall)+"　身体 "+score(row.body)+"　左手 "+score(row.left)+"　右手 "+score(row.right));
+        const scores=reportScores(row);
+        const parts=scores.parts.map(part=>part.label+" "+score(part.value));
+        if(Number.isFinite(scores.overall)) {
+          await paragraph(["相似度 "+score(scores.overall)+" · "+scores.scope,...parts].join("　"));
+        } else await paragraph("有效姿态片段不足，暂无评分。",12,false,MUTED);
         if(row.focus) await paragraph("重点 · "+row.focus+(Number.isFinite(row.firstMoment)?"　练习 "+row.firstMoment.toFixed(2)+" 秒":""),12);
       }
       await flush();
@@ -122,12 +135,16 @@ export async function makePDF({name, assessment, studentPose, referencePose, ima
     }
     await paragraph(name, 22, true);
     await space(122);
+    const scores=reportScores(assessment);
     c.fillStyle = "#edf5fb"; c.fillRect(MARGIN, y, CONTENT, 106);
-    line(assessment.coverage?.partial?"动作相似度 · 可测部位":"动作相似度", MARGIN + 15, y + 12, 12, true, BLUE);
-    const overall=Number.isFinite(assessment.overall) ? score(assessment.overall)+" / 100" : "仅作回看参考";
+    const hasScore=Number.isFinite(scores.overall);
+    const scoreHeading=hasScore ? "动作相似度 · "+scores.scope : "动作相似度";
+    line(scoreHeading, MARGIN + 15, y + 12, 12, true, BLUE);
+    const overall=hasScore ? score(scores.overall)+" / 100" : "暂无评分";
     line(overall, MARGIN + 15, y + 34, 27, true, INK);
-    const parts = [["身体", assessment.body], ["左手", assessment.left], ["右手", assessment.right]];
-    parts.forEach(([label, value], i) => line(label + "  " + score(value), MARGIN + 16 + i * 151, y + 78, 13, false, INK));
+    if(hasScore) {
+      scores.parts.forEach(({label,value},i)=>line(label+"  "+score(value),MARGIN+16+i*151,y+78,13,false,INK));
+    } else line("可继续查看动作回放与角度。",MARGIN+16,y+78,13,false,MUTED);
     y += 119;
     await paragraph("两段视频按动作顺序同步回看，分数依据可测姿态。", 11, false, MUTED);
     if (images?.length === 2 && images.every(image => image?.width && image?.height)) {
